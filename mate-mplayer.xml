@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE default-apps SYSTEM "mate-da-list.dtd">
+<default-apps>
+
+  <media-players>
+    <media-player>
+      <name>MATE MPlayer</name>
+      <executable>mate-mplayer</executable>
+      <command>mate-mplayer</command>
+      <icon-name>mate-mplayer</icon-name>
+      <run-in-terminal>false</run-in-terminal>
+    </media-player>
+  </media-players>
+
+</default-apps>

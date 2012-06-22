@@ -1,0 +1,63 @@
+%define ver @VERSION@
+%define use_mateconf @USE_MATECONF@
+%define use_gsettings @USE_GSETTINGS@
+
+Name: mate-mplayer
+Summary: MATE Frontend for MPlayer
+Version: %{ver}
+Release: 1%{?dist}
+License: GPLv2+
+Group: Multimedia
+Packager: Kevin DeKorte <kdekorte@gmail.com>
+Source0: http://mate-mplayer.googlecode.com/files/mate-mplayer-%{ver}.tar.gz
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
+Requires: mplayer mencoder
+BuildRequires: gcc-c++, pkgconfig, gettext, glib2-devel gtk2-devel MateConf2-devel dbus-devel dbus-glib-devel alsa-lib-devel pulseaudio-libs-devel libmatenotify-devel libmusicbrainz3-devel libcurl-devel pulseaudio mate-power-manager caja-devel libXScrnSaver-devel 
+
+%description
+MATE MPlayer is a GTK GUI for MPlayer based on the Mate HIG. However, the code is not dependent on any Mate library
+
+%prep
+%setup -q
+
+%build
+%configure
+make %{?_smp_mflags}
+
+%install
+rm -rf %buildroot
+make install DESTDIR=%buildroot
+
+%clean
+rm -rf $buildroot
+
+%post
+update-desktop-database %{_datadir}/applications
+
+%if %{use_mateconf}
+export MATECONF_CONFIG_SOURCE=`mateconftool-2 --get-default-source`
+mateconftool-2 --makefile-install-rule %{_sysconfdir}/mateconf/schemas/%{name}.schemas > /dev/null
+%endif
+
+%if %{use_gsettings}
+glib-compile-schemas %{_datadir}/glib-2.0/schemas
+%endif
+
+%files
+%defattr(-,root,root,-)
+%{_docdir}/%{name}
+%{_bindir}/%{name}
+%{_datadir}/applications/%{name}.desktop
+%{_datadir}/icons
+%{_datadir}/mate-control-center
+%{_datadir}/locale
+%{_datadir}/man
+%if %{use_mateconf}
+%config %{_sysconfdir}/mateconf/schemas/%{name}.schemas
+%endif
+%if %{use_gsettings}
+%{_datadir}/glib-2.0/schemas/apps.gecko-mediaplayer.preferences.gschema.xml
+%{_datadir}/glib-2.0/schemas/apps.mate-mplayer.preferences.enums.xml
+%{_datadir}/glib-2.0/schemas/apps.mate-mplayer.preferences.gschema.xml
+%endif
+%{_libdir}/caja/extensions-2.0/libmate-mplayer-properties-page.so
