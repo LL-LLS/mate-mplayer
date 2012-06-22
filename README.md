@@ -12,43 +12,44 @@ make
 make install
 
 
+Dependencies:
 
+Build Dependencies:
+alsa-lib-devel
 
-Build Dependencies:  alsa-lib-devel
+dbus-glib-devel
 
-Build Dependencies:  dbus-glib-devel
+desktop-file-utils
 
-Build Dependencies:  desktop-file-utils
+gettext
 
-Build Dependencies:  gettext
+gmtk-devel
 
-Build Dependencies:  gmtk-devel
+gtk3-devel
 
-Build Dependencies:  gtk3-devel
+libcurl-devel
 
-Build Dependencies:  libcurl-devel
+libgpod-devel
 
-Build Dependencies:  libgpod-devel
+libmusicbrainz3-devel
 
-Build Dependencies:  libmusicbrainz3-devel
+libnotify-devel
 
-Build Dependencies:  libnotify-devel
+libXScrnSaver-devel
 
-Build Dependencies:  libXScrnSaver-devel
+caja-devel
 
-Build Dependencies:  caja-devel
+pulseaudio-libs-devel
 
-Build Dependencies:  pulseaudio-libs-devel
+mate-common
 
-Build Dependencies:  mate-common
+mate-conf-devel
 
-Build Dependencies:  mate-conf-devel
+Dependencies:
+mate-control-center-filesystem
 
-Dependencies:       mate-control-center-filesystem
+gvfs-fuse
 
-Dependencies:       gvfs-fuse
+mencoder
 
-Dependencies:       mencoder
-
-Dependencies:		mplayer
-
+mplayer
