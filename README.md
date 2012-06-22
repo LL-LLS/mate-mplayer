@@ -11,6 +11,9 @@ make
 
 make install
 
+
+
+
 Build Dependencies:  alsa-lib-devel
 
 Build Dependencies:  dbus-glib-devel
