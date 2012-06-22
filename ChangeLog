@@ -1,3 +1,7 @@
+Mate-MPlayer-1.0.6
+	forked gnome-mplayer-1.0.6
+
+
 Development
 	Apply patch from David Coppa that removes the depreciated slide away code
 	Separate delete and destroy events
