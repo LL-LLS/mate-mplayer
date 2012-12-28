@@ -37,10 +37,5 @@
 #include <X11/extensions/scrnsaver.h>
 #endif
 
-#ifdef DBUS_ENABLED
-DBusConnection *connection;
-#endif
-guint ss_cookie;
-guint sm_cookie;
 gboolean screensaver_disabled;
 gboolean dbus_hookup(gint windowid, gint controlid);

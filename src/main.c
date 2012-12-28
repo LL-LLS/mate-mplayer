@@ -43,8 +43,33 @@
 #include "common.h"
 #include "support.h"
 #include "dbus-interface.h"
+#include "mpris-interface.h"
 #include "gmtk.h"
 
+static gint reallyverbose;
+static gint last_x, last_y;
+static gint stored_window_width, stored_window_height;
+static gchar *rpname;
+static gboolean use_volume_option;
+//static gboolean restore_playlist;
+//static gboolean restore_details;
+//static gboolean restore_info;
+static gboolean new_instance;
+static gboolean use_pausing_keep_force;
+static gboolean load_tracks_from_gpod;
+// tv stuff
+static gchar *tv_device;
+static gchar *tv_driver;
+static gchar *tv_input;
+static gint tv_width;
+static gint tv_height;
+static gint tv_fps;
+static gint pref_volume;
+
+typedef struct _PlayData {
+    gchar uri[4096];
+    gboolean playlist;
+} PlayData;
 
 static GOptionEntry entries[] = {
     {"window", 0, 0, G_OPTION_ARG_INT, &embed_window, N_("Window to embed in"), "WID"},
@@ -64,6 +89,7 @@ static GOptionEntry entries[] = {
      NULL},
     {"mixer", 0, 0, G_OPTION_ARG_STRING, &(audio_device.alsa_mixer), N_("Mixer to use"), NULL},
     {"volume", 0, 0, G_OPTION_ARG_INT, &(pref_volume), N_("Set initial volume percentage"), NULL},
+    // note that sizeof(gint)==sizeof(gboolean), so we can give &showcontrols here
     {"showcontrols", 0, 0, G_OPTION_ARG_INT, &showcontrols, N_("Show the controls in window"),
      "[0|1]"},
     {"showsubtitles", 0, 0, G_OPTION_ARG_INT, &showsubtitles, N_("Show the subtitles if available"),
@@ -151,8 +177,9 @@ static GOptionEntry entries[] = {
 gboolean async_play_iter(void *data)
 {
     next_iter = (GtkTreeIter *) (data);
-    // printf("state = %i\n", gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)));
-    if (gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_UNKNOWN) {
+    gm_log(verbose, G_LOG_LEVEL_DEBUG, "media state = %s",
+           gmtk_media_state_to_string(gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media))));
+    if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_UNKNOWN) {
         play_iter(next_iter, 0);
         next_iter = NULL;
     }
@@ -166,7 +193,7 @@ gboolean play(void *data)
 
     if (ok_to_play && p != NULL) {
         if (!gtk_list_store_iter_is_valid(playliststore, &iter)) {
-            // printf("iter is not valid, getting first one\n");
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "iter is not valid, getting first one");
             gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter);
         }
         gtk_list_store_set(playliststore, &iter, PLAYLIST_COLUMN, p->playlist, ITEM_COLUMN, p->uri, -1);
@@ -188,24 +215,24 @@ void play_next()
         if (gtk_list_store_iter_is_valid(playliststore, &iter)) {
             gtk_tree_model_get(GTK_TREE_MODEL(playliststore), &iter, ITEM_COLUMN, &filename,
                                COUNT_COLUMN, &count, PLAYLIST_COLUMN, &playlist, -1);
-            g_strlcpy(idledata->info, filename, 4096);
-            g_idle_add(set_media_info, idledata);
+            g_strlcpy(idledata->info, filename, sizeof(idledata->info));
+            g_idle_add(set_title_bar, idledata);
             p = (PlayData *) g_malloc(sizeof(PlayData));
-            g_strlcpy(p->uri, filename, 4096);
+            g_strlcpy(p->uri, filename, sizeof(p->uri));
             p->playlist = playlist;
             g_idle_add(play, p);
             g_free(filename);
         }
     } else {
-        // printf("end of thread playlist is empty\n");
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "end of thread playlist is empty");
         if (loop) {
-            if (first_item_in_playlist(&iter)) {
+            if (is_first_item_in_playlist(&iter)) {
                 gtk_tree_model_get(GTK_TREE_MODEL(playliststore), &iter, ITEM_COLUMN,
                                    &filename, COUNT_COLUMN, &count, PLAYLIST_COLUMN, &playlist, -1);
-                g_strlcpy(idledata->info, filename, 4096);
-                g_idle_add(set_media_info, idledata);
+                g_strlcpy(idledata->info, filename, sizeof(idledata->info));
+                g_idle_add(set_title_bar, idledata);
                 p = (PlayData *) g_malloc(sizeof(PlayData));
-                g_strlcpy(p->uri, filename, 4096);
+                g_strlcpy(p->uri, filename, sizeof(p->uri));
                 p->playlist = playlist;
                 g_idle_add(play, p);
                 g_free(filename);
@@ -231,7 +258,7 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
     GtkTreePath *path;
     gchar *uri = NULL;
     gint count;
-    gint playlist;
+    gboolean playlist;
     gchar *title = NULL;
     gchar *artist = NULL;
     gchar *album = NULL;
@@ -244,7 +271,7 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
     gint height;
     gfloat length_value;
     gint i;
-    gpointer pixbuf;
+    gchar *cover_art_file = NULL;
     gchar *buffer = NULL;
     gchar *message = NULL;
     MetaData *metadata;
@@ -257,9 +284,9 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
 #endif
 
     /*
-       if (!(gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_UNKNOWN ||
-       gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_QUIT)) {
-       while (gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_UNKNOWN) {
+       if (!(gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_UNKNOWN ||
+       gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_QUIT)) {
+       while (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_UNKNOWN) {
        gtk_main_iteration();
        }
        }
@@ -275,7 +302,7 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
                            VIDEO_WIDTH_COLUMN, &width,
                            VIDEO_HEIGHT_COLUMN, &height,
                            DEMUXER_COLUMN, &demuxer,
-                           COVERART_COLUMN, &pixbuf,
+                           COVERART_COLUMN, &cover_art_file,
                            SUBTITLE_COLUMN, &subtitle,
                            AUDIOFILE_COLUMN, &audiofile,
                            COUNT_COLUMN, &count, PLAYLIST_COLUMN, &playlist, PLAYABLE_COLUMN, &playable, -1);
@@ -292,15 +319,12 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
         }
         gtk_list_store_set(playliststore, playiter, COUNT_COLUMN, count + 1, -1);
     } else {
-        if (verbose > 1)
-            printf("iter is invalid, nothing to play\n");
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "iter is invalid, nothing to play");
         return 0;
     }
 
-    if (verbose) {
-        printf("playing - %s\n", uri);
-        printf("is playlist %i\n", playlist);
-    }
+    gm_log(verbose, G_LOG_LEVEL_INFO, "playing - %s", uri);
+    gm_log(verbose, G_LOG_LEVEL_INFO, "is playlist %s", gm_bool_to_string(playlist));
 
     gmtk_get_allocation(GTK_WIDGET(media), &alloc);
     if (width == 0 || height == 0) {
@@ -310,8 +334,9 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
         alloc.width = width;
         alloc.height = height;
     }
-    //printf("setting window size to %i x %i\n", alloc.width, alloc.height);
+    gm_log(verbose, G_LOG_LEVEL_DEBUG, "setting window size to %i x %i", alloc.width, alloc.height);
     gtk_widget_size_allocate(GTK_WIDGET(media), &alloc);
+    gm_log(verbose, G_LOG_LEVEL_DEBUG, "waiting for all events to drain");
     while (gtk_events_pending())
         gtk_main_iteration();
 
@@ -399,7 +424,7 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
     message = g_strconcat(message, "</small>", NULL);
 
     // probably not much cover art for random video files
-    if (pixbuf == NULL && video_codec == NULL && !streaming_media(uri) && control_id == 0 && !playlist) {
+    if (cover_art_file == NULL && video_codec == NULL && !streaming_media(uri) && control_id == 0 && !playlist) {
         metadata = (MetaData *) g_new0(MetaData, 1);
         metadata->uri = g_strdup(uri);
         if (title != NULL)
@@ -408,17 +433,18 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
             metadata->artist = g_strstrip(g_strdup(artist));
         if (album != NULL)
             metadata->album = g_strstrip(g_strdup(album));
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "starting get_cover_art(%s) thread", metadata->uri);
         g_thread_create(get_cover_art, metadata, FALSE, NULL);
     } else {
         gtk_image_clear(GTK_IMAGE(cover_art));
     }
 
-    g_strlcpy(idledata->media_info, message, 1024);
-    g_strlcpy(idledata->display_name, title, 1024);
+    g_strlcpy(idledata->media_info, message, sizeof(idledata->media_info));
+    g_strlcpy(idledata->display_name, title, sizeof(idledata->display_name));
     g_free(message);
 
     message = gm_tempname(NULL, "mplayer-af_exportXXXXXX");
-    g_strlcpy(idledata->af_export, message, 1024);
+    g_strlcpy(idledata->af_export, message, sizeof(idledata->af_export));
     g_free(message);
 
     message = g_strdup("");
@@ -439,7 +465,7 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
         message = g_strconcat(message, buffer, NULL);
         g_free(buffer);
     }
-    g_strlcpy(idledata->media_notification, message, 1024);
+    g_strlcpy(idledata->media_notification, message, sizeof(idledata->media_notification));
     g_free(message);
 
     if (control_id == 0) {
@@ -495,7 +521,7 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
         } else {
             recent_data->display_name = g_strdup(title);
         }
-        g_strlcpy(idledata->display_name, recent_data->display_name, 1024);
+        g_strlcpy(idledata->display_name, recent_data->display_name, sizeof(idledata->display_name));
 
 
         file = g_file_new_for_uri(uri);
@@ -526,10 +552,10 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
     g_free(artist);
     g_free(album);
     if (demuxer != NULL) {
-        g_strlcpy(idledata->demuxer, demuxer, 64);
+        g_strlcpy(idledata->demuxer, demuxer, sizeof(idledata->demuxer));
         g_free(demuxer);
     } else {
-        g_strlcpy(idledata->demuxer, "", 64);
+        g_strlcpy(idledata->demuxer, "", sizeof(idledata->demuxer));
     }
 
     last_x = 0;
@@ -539,8 +565,8 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
 
     idledata->retry_on_full_cache = FALSE;
     idledata->cachepercent = -1.0;
-    g_strlcpy(idledata->info, uri, 1024);
-    set_media_info(idledata);
+    g_strlcpy(idledata->info, uri, sizeof(idledata->info));
+    set_title_bar(idledata);
 
     streaming = 0;
 
@@ -592,7 +618,7 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
 #ifndef OS_WIN32
 static void hup_handler(int signum)
 {
-    // printf("handling signal %i\n",signum);
+    gm_log(verbose, G_LOG_LEVEL_DEBUG, "handling signal %i", signum);
     delete_callback(NULL, NULL, NULL);
     g_idle_add(set_destroy, NULL);
 }
@@ -677,17 +703,17 @@ int main(int argc, char *argv[])
     textdomain(GETTEXT_PACKAGE);
 #endif
 
-    playlist = 0;
+    playlist = FALSE;
     embed_window = 0;
     control_id = 0;
     window_x = 0;
     window_y = 0;
     last_window_width = 0;
     last_window_height = 0;
-    showcontrols = 1;
+    showcontrols = TRUE;
     showsubtitles = TRUE;
     autostart = 1;
-    videopresent = 0;
+    videopresent = FALSE;
     disable_context_menu = FALSE;
     dontplaynext = FALSE;
     idledata = (IdleData *) g_new0(IdleData, 1);
@@ -775,15 +801,27 @@ int main(int argc, char *argv[])
     start_second = 0;
     play_length = 0;
     save_loc = TRUE;
-    use_xscrnsaver = FALSE;
     screensaver_disabled = FALSE;
     update_control_flag = FALSE;
-    gchar *filename;
     skip_fixed_allocation_on_show = FALSE;
     skip_fixed_allocation_on_hide = FALSE;
     pref_volume = -1;
     use_mplayer2 = FALSE;
     enable_global_menu = FALSE;
+    cover_art_uri = NULL;
+
+
+    // All Gtk docs say we need to call g_thread_init() and gdk_threads_init() before gtk_init()
+    //
+    // Why do we not call this? Why does the program seem to deadlock if we enable this call?
+    // I assume once we have truly fixed locking/threading this will work....
+    // gdk_threads_init();
+    if (!g_thread_supported())
+        g_thread_init(NULL);
+
+    g_type_init();
+    gtk_init(&argc, &argv);
+    g_setenv("PULSE_PROP_media.role", "video", TRUE);
 
 #ifndef OS_WIN32
     sa.sa_handler = hup_handler;
@@ -792,24 +830,22 @@ int main(int argc, char *argv[])
     sa.sa_flags = SA_RESTART;   /* Restart functions if
                                    interrupted by handler */
 #endif
+
+    gm_log_name_this_thread("root");
+
 #ifdef SIGINT
     if (sigaction(SIGINT, &sa, NULL) == -1)
-        printf("SIGINT signal handler not installed\n");
+        gm_log(verbose, G_LOG_LEVEL_MESSAGE, "SIGINT signal handler not installed");
 #endif
 #ifdef SIGHUP
     if (sigaction(SIGHUP, &sa, NULL) == -1)
-        printf("SIGHUP signal handler not installed\n");
+        gm_log(verbose, G_LOG_LEVEL_MESSAGE, "SIGHUP signal handler not installed");
 #endif
 #ifdef SIGTERM
     if (sigaction(SIGTERM, &sa, NULL) == -1)
-        printf("SIGTERM signal handler not installed\n");
+        gm_log(verbose, G_LOG_LEVEL_MESSAGE, "SIGTERM signal handler not installed");
 #endif
 #endif
-
-    // call g_type_init or otherwise we can crash
-    gtk_init(&argc, &argv);
-    if (!g_thread_supported())
-        g_thread_init(NULL);
 
     uri = g_strdup_printf("%s/mate-mplayer/cover_art", g_get_user_config_dir());
     if (!g_file_test(uri, G_FILE_TEST_IS_DIR)) {
@@ -911,7 +947,6 @@ int main(int argc, char *argv[])
     }
     mplayer_dvd_device = gm_pref_store_get_string(gm_store, MPLAYER_DVD_DEVICE);
     extraopts = gm_pref_store_get_string(gm_store, EXTRAOPTS);
-    use_xscrnsaver = gm_pref_store_get_boolean_with_default(gm_store, USE_XSCRNSAVER, use_xscrnsaver);
 
     accelerator_keys = gm_pref_store_get_string(gm_store, ACCELERATOR_KEYS);
     accel_keys = g_strv_new(KEY_COUNT);
@@ -976,6 +1011,8 @@ int main(int argc, char *argv[])
     if (verbose) {
         printf(_("MATE MPlayer v%s\n"), VERSION);
         printf(_("gmtk v%s\n"), gmtk_version());
+        printf("GTK %i.%i.%i\n", GTK_MAJOR_VERSION, GTK_MINOR_VERSION, GTK_MICRO_VERSION);
+        printf("GLIB %i.%i.%i\n", GLIB_MAJOR_VERSION, GLIB_MINOR_VERSION, GLIB_MICRO_VERSION);
     }
 
     if (cache_size == 0)
@@ -997,33 +1034,30 @@ int main(int argc, char *argv[])
     gm_pref_store_free(gm_store);
     gm_pref_store_free(gmp_store);
 
-    if (verbose && embed_window) {
-        printf("embedded in window id 0x%x\n", embed_window);
+    if (embed_window) {
+        gm_log(verbose, G_LOG_LEVEL_INFO, "embedded in window id 0x%x", embed_window);
     }
 
-    if (verbose && single_instance) {
-        printf("Running in single instance mode\n");
+    if (single_instance) {
+        gm_log(verbose, G_LOG_LEVEL_INFO, "Running in single instance mode");
     }
 #ifdef GIO_ENABLED
-    if (verbose) {
-        printf("Running with GIO support\n");
-    }
+    gm_log(verbose, G_LOG_LEVEL_INFO, "Running with GIO support");
 #endif
 #ifdef ENABLE_PANSCAN
-    if (verbose) {
-        printf("Running with panscan enabled (mplayer svn r29565 or higher required)\n");
+    gm_log(verbose, G_LOG_LEVEL_INFO, "Running with panscan enabled (mplayer svn r29565 or higher required)");
+#endif
+    gm_log(verbose, G_LOG_LEVEL_INFO, "Using audio device: %s", audio_device_name);
+#ifdef HAVE_MUSICBRAINZ
+    if (curl_global_init(CURL_GLOBAL_ALL) != 0) {
+        gm_log(verbose, G_LOG_LEVEL_MESSAGE, "CURL initialization failed");
     }
 #endif
-    if (verbose) {
-        printf("Using audio device: %s\n", audio_device_name);
-    }
 
     if (softvol) {
-        if (verbose)
-            printf("Using MPlayer Software Volume control\n");
+        gm_log(verbose, G_LOG_LEVEL_INFO, "Using MPlayer Software Volume control");
         if (remember_softvol && volume_softvol != -1) {
-            if (verbose)
-                printf("Using last volume of %f%%\n", volume_softvol * 100.0);
+            gm_log(verbose, G_LOG_LEVEL_INFO, "Using last volume of %f%%", volume_softvol * 100.0);
             volume = (gdouble) volume_softvol *100.0;
         } else {
             volume = 100.0;
@@ -1041,17 +1075,15 @@ int main(int argc, char *argv[])
         printf(_("Run 'mate-mplayer --help' to see a full list of available command line options.\n"));
         return 1;
     }
-    // if (verbose)
-    //      printf("Threading support enabled = %i\n",g_thread_supported());
-
+    gm_log(verbose, G_LOG_LEVEL_DEBUG, "Threading support enabled = %s", gm_bool_to_string(g_thread_supported()));
     if (rpconsole == NULL)
         rpconsole = g_strdup("NONE");
 
     // setup playliststore
     playliststore =
-        gtk_list_store_new(N_COLUMNS, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT, G_TYPE_INT,
+        gtk_list_store_new(N_COLUMNS, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT, G_TYPE_BOOLEAN,
                            G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_FLOAT, G_TYPE_STRING,
-                           G_TYPE_STRING, G_TYPE_POINTER, G_TYPE_STRING, G_TYPE_STRING,
+                           G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
                            G_TYPE_STRING, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT,
                            G_TYPE_FLOAT, G_TYPE_FLOAT, G_TYPE_BOOLEAN);
 
@@ -1072,6 +1104,7 @@ int main(int argc, char *argv[])
 #endif
 
     retrieve_metadata_pool = g_thread_pool_new(retrieve_metadata, NULL, 10, TRUE, NULL);
+    retrieve_mutex = g_mutex_new();
 
     if (argv[fileindex] != NULL) {
 #ifdef GIO_ENABLED
@@ -1086,8 +1119,7 @@ int main(int argc, char *argv[])
                 g_object_unref(file_info);
             }
             if (error != NULL) {
-                if (verbose)
-                    printf("failed to get mode: %s\n", error->message);
+                gm_log(verbose, G_LOG_LEVEL_INFO, "failed to get mode: %s", error->message);
                 g_error_free(error);
             }
             g_object_unref(file);
@@ -1096,16 +1128,14 @@ int main(int argc, char *argv[])
         stat_result = g_stat(argv[fileindex], &buf);
 #endif
 
-        if (verbose) {
-            printf("opening %s\n", argv[fileindex]);
-            printf("stat_result = %i\n", stat_result);
-            printf("is block %i\n", S_ISBLK(buf.st_mode));
-            printf("is character %i\n", S_ISCHR(buf.st_mode));
-            printf("is reg %i\n", S_ISREG(buf.st_mode));
-            printf("is dir %i\n", S_ISDIR(buf.st_mode));
-            printf("playlist %i\n", playlist);
-            printf("embedded in window id 0x%x\n", embed_window);
-        }
+        gm_log(verbose, G_LOG_LEVEL_INFO, "opening %s", argv[fileindex]);
+        gm_log(verbose, G_LOG_LEVEL_INFO, "stat_result = %i", stat_result);
+        gm_log(verbose, G_LOG_LEVEL_INFO, "is block %s", gm_bool_to_string(S_ISBLK(buf.st_mode)));
+        gm_log(verbose, G_LOG_LEVEL_INFO, "is character %s", gm_bool_to_string(S_ISCHR(buf.st_mode)));
+        gm_log(verbose, G_LOG_LEVEL_INFO, "is reg %s", gm_bool_to_string(S_ISREG(buf.st_mode)));
+        gm_log(verbose, G_LOG_LEVEL_INFO, "is dir %s", gm_bool_to_string(S_ISDIR(buf.st_mode)));
+        gm_log(verbose, G_LOG_LEVEL_INFO, "playlist %s", gm_bool_to_string(playlist));
+        gm_log(verbose, G_LOG_LEVEL_INFO, "embedded in window id 0x%x", embed_window);
         if (stat_result == 0 && S_ISBLK(buf.st_mode)) {
             // might have a block device, so could be a DVD
 
@@ -1114,7 +1144,7 @@ int main(int argc, char *argv[])
             do {
                 mnt = getmntent(fp);
                 if (mnt)
-                    printf("%s is at %s\n", mnt->mnt_fsname, mnt->mnt_dir);
+                    gm_log(verbose, G_LOG_LEVEL_MESSAGE, "%s is at %s", mnt->mnt_fsname, mnt->mnt_dir);
                 if (argv[fileindex] != NULL && mnt && mnt->mnt_fsname != NULL) {
                     if (strcmp(argv[fileindex], mnt->mnt_fsname) == 0)
                         break;
@@ -1124,12 +1154,12 @@ int main(int argc, char *argv[])
             endmntent(fp);
 #endif
             if (mnt && mnt->mnt_dir) {
-                printf("%s is mounted on %s\n", argv[fileindex], mnt->mnt_dir);
+                gm_log(verbose, G_LOG_LEVEL_MESSAGE, "%s is mounted on %s", argv[fileindex], mnt->mnt_dir);
                 uri = g_strdup_printf("%s/VIDEO_TS", mnt->mnt_dir);
                 stat(uri, &buf);
                 g_free(uri);
                 if (S_ISDIR(buf.st_mode)) {
-                    add_item_to_playlist("dvdnav://", 0);
+                    add_item_to_playlist("dvdnav://", FALSE);
                     gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter);
                     gmtk_media_player_set_media_type(GMTK_MEDIA_PLAYER(media), TYPE_DVD);
                     //play_iter(&iter, 0);
@@ -1144,7 +1174,7 @@ int main(int argc, char *argv[])
                         gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter);
                         randomize_playlist(playliststore);
                     }
-                    if (gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter)) {
+                    if (first_item_in_playlist(playliststore, &iter)) {
                         // play_iter(&iter, 0);
                         playiter = TRUE;
                     }
@@ -1156,7 +1186,7 @@ int main(int argc, char *argv[])
                     randomize_playlist(playliststore);
                 }
                 //play_file("cdda://", playlist);
-                if (gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter)) {
+                if (first_item_in_playlist(playliststore, &iter)) {
                     // play_iter(&iter, 0);
                     playiter = TRUE;
                 }
@@ -1166,7 +1196,7 @@ int main(int argc, char *argv[])
             stat_result = g_stat(uri, &buf);
             g_free(uri);
             if (stat_result == 0 && S_ISDIR(buf.st_mode)) {
-                add_item_to_playlist("dvdnav://", 0);
+                add_item_to_playlist("dvdnav://", FALSE);
                 gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter);
                 gmtk_media_player_set_media_type(GMTK_MEDIA_PLAYER(media), TYPE_DVD);
                 //play_iter(&iter, 0);
@@ -1190,7 +1220,7 @@ int main(int argc, char *argv[])
                     gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter);
                     randomize_playlist(playliststore);
                 }
-                if (gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter)) {
+                if (first_item_in_playlist(playliststore, &iter)) {
                     //play_iter(&iter, 0);
                     playiter = TRUE;
                 }
@@ -1201,8 +1231,7 @@ int main(int argc, char *argv[])
             i = fileindex;
 
             while (argv[i] != NULL) {
-                if (verbose > 1)
-                    printf("Argument %i is %s\n", i, argv[i]);
+                gm_log(verbose, G_LOG_LEVEL_DEBUG, "Argument %i is %s", i, argv[i]);
 #ifdef GIO_ENABLED
                 if (!device_name(argv[i])) {
                     file = g_file_new_for_commandline_arg(argv[i]);
@@ -1220,7 +1249,7 @@ int main(int argc, char *argv[])
 #endif
 
                 if (uri != NULL) {
-                    if (playlist == 0)
+                    if (playlist == FALSE)
                         playlist = detect_playlist(uri);
                     if (!playlist) {
                         add_item_to_playlist(uri, playlist);
@@ -1238,8 +1267,7 @@ int main(int argc, char *argv[])
                 gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter);
                 randomize_playlist(playliststore);
             }
-            if (gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter)) {
-                // play_iter(&iter, 0);
+            if (first_item_in_playlist(playliststore, &iter)) {
                 playiter = TRUE;
             }
         }
@@ -1248,27 +1276,28 @@ int main(int argc, char *argv[])
 #ifdef HAVE_GPOD
     if (load_tracks_from_gpod) {
         gpod_mount_point = find_gpod_mount_point();
-        printf("mount point is %s\n", gpod_mount_point);
+        gm_log(verbose, G_LOG_LEVEL_MESSAGE, "mount point is %s", gpod_mount_point);
         if (gpod_mount_point != NULL) {
             gpod_load_tracks(gpod_mount_point);
         } else {
-            printf("Unable to find gpod mount point\n");
+            gm_log(verbose, G_LOG_LEVEL_MESSAGE, "Unable to find gpod mount point");
         }
     }
 #endif
 
     gm_audio_update_device(&audio_device);
-    gm_audio_get_volume(&audio_device);
+    // disabling this line seems to help with hangs on startup when using pulseaudio
+    //gm_audio_get_volume(&audio_device);
     gm_audio_set_server_volume_update_callback(&audio_device, set_volume);
     set_media_player_attributes(media);
 
     if (!softvol) {
         if (pref_volume != -1) {
             audio_device.volume = (gdouble) pref_volume / 100.0;
+            gm_log(verbose, G_LOG_LEVEL_INFO, "The volume on '%s' is %f", audio_device.description,
+                   audio_device.volume);
+            volume = audio_device.volume * 100;
         }
-        if (verbose)
-            printf("The volume on '%s' is %f\n", audio_device.description, audio_device.volume);
-        volume = audio_device.volume * 100;
     } else {
         audio_device.volume = volume / 100.0;
     }
@@ -1280,6 +1309,10 @@ int main(int argc, char *argv[])
     use_volume_option = detect_volume_option();
 
     dbus_hookup(embed_window, control_id);
+    // don't hook up MPRIS when running in embedded mode
+    if (embed_window == 0) {
+        mpris_hookup(control_id);
+    }
     show_window(embed_window);
 
     if (playiter)
@@ -1328,6 +1361,8 @@ int main(int argc, char *argv[])
     }
     safe_to_save_default_playlist = TRUE;
 
+    // put the request to update the volume into the list of tasks to complete
+    g_idle_add(set_volume, NULL);
     gtk_main();
 
     return 0;

@@ -25,6 +25,20 @@
 #include "dbus-interface.h"
 #include "support.h"
 #include <unistd.h>
+#include <sys/wait.h>
+
+#define WAIT_FOR_REPLY_TIMEOUT_MSEC 200
+
+#ifdef DBUS_ENABLED
+static DBusConnection *connection;
+#endif
+static guint ss_cookie;
+static guint sm_cookie;
+static guint fd_cookie;
+static gboolean ss_cookie_is_valid;
+static gboolean sm_cookie_is_valid;
+static gboolean fd_cookie_is_valid;
+
 /*
 
 To send command to ALL running mate-mplayers (multihead applications)
@@ -77,11 +91,8 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
     //sender = dbus_message_get_sender(message);
     //destination = dbus_message_get_destination(message);
 
-    /*
-       printf("path=%s; interface=%s; member=%s; data=%s\n",
-       dbus_message_get_path(message),
-       dbus_message_get_interface(message), dbus_message_get_member(message), s);
-     */
+    gm_log(verbose, G_LOG_LEVEL_DEBUG, "path=%s; interface=%s; member=%s; data=%s",
+           dbus_message_get_path(message), dbus_message_get_interface(message), dbus_message_get_member(message), s);
 
     path1 = g_strdup_printf("/control/%i", control_id);
     path2 = g_strdup_printf("/window/%i", embed_window);
@@ -98,25 +109,28 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
             g_ascii_strcasecmp(dbus_message_get_path(message), "/org/mate/SettingsDaemon") == 0 ||
             g_ascii_strcasecmp(dbus_message_get_path(message), "/org/mate/SettingsDaemon/MediaKeys") == 0) {
 
-            // printf("Path matched %s\n", dbus_message_get_path(message));
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "Path matched %s", dbus_message_get_path(message));
             if (message_type == DBUS_MESSAGE_TYPE_SIGNAL) {
                 if (g_ascii_strcasecmp(dbus_message_get_member(message), "Open") == 0) {
-                    if (gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_UNKNOWN)
+                    if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_UNKNOWN) {
                         dontplaynext = TRUE;
-                    gmtk_media_player_set_state(GMTK_MEDIA_PLAYER(media), MEDIA_STATE_QUIT);
+                        gmtk_media_player_set_state(GMTK_MEDIA_PLAYER(media), MEDIA_STATE_QUIT);
+                    }
                     dbus_error_init(&error);
                     if (dbus_message_get_args(message, &error, DBUS_TYPE_STRING, &s, DBUS_TYPE_INVALID)) {
-                        if (strlen(s) > 0) {
-                            if (verbose)
-                                printf("opening %s\n", s);
+                        if (s != NULL && strlen(s) > 0) {
+                            gm_log(verbose, G_LOG_LEVEL_DEBUG, "opening %s", s);
+                            gm_log(verbose, G_LOG_LEVEL_DEBUG, "rpconsole = %s, control_instance=%i", rpconsole,
+                                   control_instance);
                             if ((strcmp(rpconsole, "NONE") == 0 || control_instance == FALSE)
                                 && s != NULL) {
+                                gm_log(verbose, G_LOG_LEVEL_DEBUG,
+                                       "calling clear_playlist_and_play rpconsole = %s, control_instance=%i", rpconsole,
+                                       control_instance);
                                 g_idle_add(clear_playlist_and_play, g_strdup(s));
                             }
                         } else {
-                            if (verbose) {
-                                printf("Open requested, but value is blank\n");
-                            }
+                            gm_log(verbose, G_LOG_LEVEL_MESSAGE, "Open requested, but value is blank");
                         }
 
                     } else {
@@ -305,13 +319,14 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                 if (g_ascii_strcasecmp(dbus_message_get_member(message), "Terminate") == 0) {
 /*
 					shutdown();
+                                        gm_log(verbose, G_LOG_LEVEL_DEBUG, "waiting for all events to drain and thread to become NULL");
 					while(gtk_events_pending() || thread != NULL) {
 						gtk_main_iteration();
 					}					
 					dbus_unhook();
                     gtk_main_quit();
 */
-                    if (gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_UNKNOWN)
+                    if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_UNKNOWN)
                         dontplaynext = TRUE;
                     g_idle_add(set_quit, idledata);
                     return DBUS_HANDLER_RESULT_HANDLED;
@@ -351,8 +366,8 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                 if (g_ascii_strcasecmp(dbus_message_get_member(message), "RP_Volume") == 0 && idledata != NULL) {
                     dbus_error_init(&error);
                     if (dbus_message_get_args
-                        (message, &error, DBUS_TYPE_DOUBLE, &(volume), DBUS_TYPE_INT32,
-                         &source_id, DBUS_TYPE_INVALID)) {
+                        (message, &error, DBUS_TYPE_DOUBLE, &(volume), DBUS_TYPE_INT32, &source_id,
+                         DBUS_TYPE_INVALID)) {
                         if (source_id != control_id) {
                             idledata->fromdbus = TRUE;
                             audio_device.volume = volume / 100.0;
@@ -413,7 +428,7 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                         g_idle_add(set_progress_value, idledata);
                         if (idledata->cachepercent > 0.99 && idledata->retry_on_full_cache) {
                             if (gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), &iter)) {
-                                //printf("retrying on full cache\n");
+                                gm_log(verbose, G_LOG_LEVEL_DEBUG, "retrying on full cache");
                                 play_iter(&iter, 0);
                             }
                         }
@@ -426,8 +441,8 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                 if (g_ascii_strcasecmp(dbus_message_get_member(message), "SetProgressText") == 0 && idledata != NULL) {
                     dbus_error_init(&error);
                     if (dbus_message_get_args(message, &error, DBUS_TYPE_STRING, &s, DBUS_TYPE_INVALID)) {
-                        g_strlcpy(idledata->progress_text, s, 1024);
-                        if (gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_PLAY)
+                        g_strlcpy(idledata->progress_text, s, sizeof(idledata->progress_text));
+                        if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_PLAY)
                             g_idle_add(set_progress_text, idledata);
                     } else {
                         dbus_error_free(&error);
@@ -439,7 +454,7 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                     dbus_error_init(&error);
                     if (dbus_message_get_args
                         (message, &error, DBUS_TYPE_STRING, &s, DBUS_TYPE_INT32, &source_id, DBUS_TYPE_INVALID)) {
-                        g_strlcpy(idledata->progress_text, s, 1024);
+                        g_strlcpy(idledata->progress_text, s, sizeof(idledata->progress_text));
                         if (source_id != control_id) {
                             idledata->fromdbus = TRUE;
                             g_idle_add(set_progress_text, idledata);
@@ -454,7 +469,7 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                 if (g_ascii_strcasecmp(dbus_message_get_member(message), "SetMediaLabel") == 0 && idledata != NULL) {
                     dbus_error_init(&error);
                     if (dbus_message_get_args(message, &error, DBUS_TYPE_STRING, &s, DBUS_TYPE_INVALID)) {
-                        g_strlcpy(idledata->media_info, s, 1024);
+                        g_strlcpy(idledata->media_info, s, sizeof(idledata->progress_text));
                         g_idle_add(set_media_label, idledata);
                     } else {
                         dbus_error_free(&error);
@@ -466,7 +481,7 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                     dbus_error_init(&error);
                     if (dbus_message_get_args
                         (message, &error, DBUS_TYPE_STRING, &s, DBUS_TYPE_INT32, &source_id, DBUS_TYPE_INVALID)) {
-                        g_strlcpy(idledata->media_info, s, 1024);
+                        g_strlcpy(idledata->media_info, s, sizeof(idledata->progress_text));
                         if (source_id != control_id) {
                             idledata->fromdbus = TRUE;
                             g_idle_add(set_media_label, idledata);
@@ -480,8 +495,8 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                 if (g_ascii_strcasecmp(dbus_message_get_member(message), "SetInfo") == 0 && idledata != NULL) {
                     dbus_error_init(&error);
                     if (dbus_message_get_args(message, &error, DBUS_TYPE_STRING, &s, DBUS_TYPE_INVALID)) {
-                        g_strlcpy(idledata->info, s, 1024);
-                        g_idle_add(set_media_info, idledata);
+                        g_strlcpy(idledata->info, s, sizeof(idledata->info));
+                        g_idle_add(set_title_bar, idledata);
                     } else {
                         dbus_error_free(&error);
                     }
@@ -492,7 +507,7 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                     dbus_error_init(&error);
                     if (dbus_message_get_args(message, &error, DBUS_TYPE_STRING, &s, DBUS_TYPE_INVALID)) {
                         gmtk_media_player_set_uri(GMTK_MEDIA_PLAYER(media), s);
-                        g_strlcpy(idledata->url, s, 2048);
+                        g_strlcpy(idledata->url, s, sizeof(idledata->url));
                         g_idle_add(show_copyurl, idledata);
                     } else {
                         dbus_error_free(&error);
@@ -516,8 +531,8 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                     dbus_error_init(&error);
                     if (dbus_message_get_args
                         (message, &error, DBUS_TYPE_INT32, &window_x, DBUS_TYPE_INT32, &window_y, DBUS_TYPE_INVALID)) {
-                        if (window_x > 0 && window_y > 0);
-                        g_idle_add(resize_window, idledata);
+                        if (window_x > 0 && window_y > 0)
+                            g_idle_add(resize_window, idledata);
                     } else {
                         dbus_error_free(&error);
                     }
@@ -593,7 +608,7 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                     return DBUS_HANDLER_RESULT_HANDLED;
                 }
             } else if (message_type == DBUS_MESSAGE_TYPE_METHOD_CALL) {
-                // printf("Got member %s\n",dbus_message_get_member(message));
+                gm_log(verbose, G_LOG_LEVEL_DEBUG, "Got member %s", dbus_message_get_member(message));
                 if (dbus_message_is_method_call(message, "org.freedesktop.DBus.Introspectable", "Introspect")) {
 
                     xml =
@@ -602,8 +617,8 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                          "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
                          "<node>\n" "  <interface name=\"org.freedesktop.DBus.Introspectable\">\n"
                          "    <method name=\"Introspect\">\n"
-                         "      <arg name=\"data\" direction=\"out\" type=\"s\"/>\n"
-                         "    </method>\n" "  </interface>\n");
+                         "      <arg name=\"data\" direction=\"out\" type=\"s\"/>\n" "    </method>\n"
+                         "  </interface>\n");
 
                     xml = g_string_append(xml,
                                           "<interface name=\"com.mate.mplayer\">\n"
@@ -717,8 +732,8 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                 }
                 if (dbus_message_is_method_call(message, "com.mate.mplayer", "GetCacheSize")) {
                     reply_message = dbus_message_new_method_return(message);
-                    dbus_message_append_args(reply_message, DBUS_TYPE_INT32,
-                                             &plugin_video_cache_size, DBUS_TYPE_INVALID);
+                    dbus_message_append_args(reply_message, DBUS_TYPE_INT32, &plugin_video_cache_size,
+                                             DBUS_TYPE_INVALID);
                     dbus_connection_send(connection, reply_message, NULL);
                     dbus_message_unref(reply_message);
                     cache_size = plugin_video_cache_size;
@@ -726,8 +741,8 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                 }
                 if (dbus_message_is_method_call(message, "com.mate.mplayer", "GetPluginAudioCacheSize")) {
                     reply_message = dbus_message_new_method_return(message);
-                    dbus_message_append_args(reply_message, DBUS_TYPE_INT32,
-                                             &plugin_audio_cache_size, DBUS_TYPE_INVALID);
+                    dbus_message_append_args(reply_message, DBUS_TYPE_INT32, &plugin_audio_cache_size,
+                                             DBUS_TYPE_INVALID);
                     dbus_connection_send(connection, reply_message, NULL);
                     dbus_message_unref(reply_message);
                     cache_size = plugin_audio_cache_size;
@@ -735,8 +750,8 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                 }
                 if (dbus_message_is_method_call(message, "com.mate.mplayer", "GetPluginVideoCacheSize")) {
                     reply_message = dbus_message_new_method_return(message);
-                    dbus_message_append_args(reply_message, DBUS_TYPE_INT32,
-                                             &plugin_video_cache_size, DBUS_TYPE_INVALID);
+                    dbus_message_append_args(reply_message, DBUS_TYPE_INT32, &plugin_video_cache_size,
+                                             DBUS_TYPE_INVALID);
                     dbus_connection_send(connection, reply_message, NULL);
                     dbus_message_unref(reply_message);
                     cache_size = plugin_video_cache_size;
@@ -744,32 +759,32 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                 }
                 if (dbus_message_is_method_call(message, "com.mate.mplayer", "GetPlayState")) {
                     reply_message = dbus_message_new_method_return(message);
-                    if (gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_PAUSE) {
+                    if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_PAUSE) {
                         js_state = STATE_PAUSED;
                     }
 
-                    if (gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_STOP) {
+                    if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_STOP) {
                         js_state = STATE_STOPPED;
                     }
 
-                    if (gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_PLAY) {
+                    if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_PLAY) {
                         js_state = STATE_PLAYING;
                     }
 
-                    if (gmtk_media_player_get_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_BUFFERING) {
+                    if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) == MEDIA_STATE_BUFFERING) {
                         js_state = STATE_BUFFERING;
                     }
 
                     if (gmtk_media_player_get_attribute_double(GMTK_MEDIA_PLAYER(media), ATTRIBUTE_POSITION) == 0) {
-                        if (gmtk_media_player_get_attribute_double
-                            (GMTK_MEDIA_PLAYER(media), ATTRIBUTE_CACHE_PERCENT) > 0.0) {
+                        if (gmtk_media_player_get_attribute_double(GMTK_MEDIA_PLAYER(media), ATTRIBUTE_CACHE_PERCENT) >
+                            0.0) {
                             js_state = STATE_BUFFERING;
                         }
                     }
-
                     dbus_message_append_args(reply_message, DBUS_TYPE_INT32, &js_state, DBUS_TYPE_INVALID);
                     dbus_connection_send(connection, reply_message, NULL);
                     dbus_message_unref(reply_message);
+
                     return DBUS_HANDLER_RESULT_HANDLED;
                 }
                 if (dbus_message_is_method_call(message, "com.mate.mplayer", "GetBitrate")) {
@@ -819,14 +834,14 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                     dbus_message_unref(reply_message);
                     return DBUS_HANDLER_RESULT_HANDLED;
                 }
-                printf("Unable to find method call\n");
+                gm_log(verbose, G_LOG_LEVEL_MESSAGE, "Unable to find method call");
             } else {
-                if (verbose)
-                    printf("path didn't match - %s\n", dbus_message_get_path(message));
+                gm_log(verbose, G_LOG_LEVEL_INFO, "path didn't match - %s", dbus_message_get_path(message));
             }
 
         }
     }
+
     g_free(path1);
     g_free(path2);
     g_free(path3);
@@ -843,8 +858,7 @@ void dbus_open_by_hrefid(gchar * hrefid)
     gchar *id;
 
     id = g_strdup(hrefid);
-    if (verbose)
-        printf("requesting id = %s\n", id);
+    gm_log(verbose, G_LOG_LEVEL_INFO, "requesting id = %s", id);
     if (connection != NULL && control_id != 0) {
         path = g_strdup_printf("/control/%i", control_id);
         message = dbus_message_new_signal(path, "com.gecko.mediaplayer", "RequestById");
@@ -863,6 +877,7 @@ void dbus_open_next()
     gchar *path;
     DBusMessage *message;
 
+    gm_log(verbose, G_LOG_LEVEL_INFO, "requesting next item from plugin");
     if (connection != NULL && control_id != 0) {
         path = g_strdup_printf("/control/%i", control_id);
         message = dbus_message_new_signal(path, "com.gecko.mediaplayer", "Next");
@@ -944,7 +959,7 @@ void dbus_send_rpsignal(gchar * signal)
     DBusMessage *message;
     gint id;
 
-    if (g_strcasecmp(rpconsole, "NONE") == 0)
+    if (g_ascii_strcasecmp(rpconsole, "NONE") == 0)
         return;
 
     id = control_id;
@@ -969,7 +984,7 @@ void dbus_send_rpsignal_with_int(gchar * signal, int value)
     DBusMessage *message;
     gint id;
 
-    if (g_strcasecmp(rpconsole, "NONE") == 0)
+    if (g_ascii_strcasecmp(rpconsole, "NONE") == 0)
         return;
 
     id = control_id;
@@ -994,7 +1009,7 @@ void dbus_send_rpsignal_with_double(gchar * signal, gdouble value)
     DBusMessage *message;
     gint id;
 
-    if (g_strcasecmp(rpconsole, "NONE") == 0)
+    if (g_ascii_strcasecmp(rpconsole, "NONE") == 0)
         return;
 
     id = control_id;
@@ -1020,7 +1035,7 @@ void dbus_send_rpsignal_with_string(gchar * signal, gchar * value)
     gint id;
     gchar *localstr;
 
-    if (g_strcasecmp(rpconsole, "NONE") == 0)
+    if (g_ascii_strcasecmp(rpconsole, "NONE") == 0)
         return;
 
     id = control_id;
@@ -1069,9 +1084,7 @@ void dbus_send_event(gchar * event, gint button)
     if (connection != NULL && control_id != 0) {
         path = g_strdup_printf("/control/%i", control_id);
         localevent = g_strdup_printf("%s", event);
-        if (verbose > 1) {
-            printf("Posting Event %s\n", localevent);
-        }
+        gm_log(verbose, G_LOG_LEVEL_INFO, "Posting Event %s", localevent);
         message = dbus_message_new_signal(path, "com.gecko.mediaplayer", "Event");
         dbus_message_append_args(message, DBUS_TYPE_STRING, &localevent, DBUS_TYPE_INT32,
                                  &localbutton, DBUS_TYPE_INVALID);
@@ -1106,7 +1119,7 @@ gboolean dbus_hookup(gint windowid, gint controlid)
     dbus_error_init(&error);
     connection = dbus_bus_get(type, &error);
     if (connection == NULL) {
-        printf("Failed to open connection to %s message bus: %s\n",
+        gm_log(verbose, G_LOG_LEVEL_MESSAGE, "Failed to open connection to %s message bus: %s",
                (type == DBUS_BUS_SYSTEM) ? "system" : "session", error.message);
         dbus_error_free(&error);
         return FALSE;
@@ -1121,30 +1134,26 @@ gboolean dbus_hookup(gint windowid, gint controlid)
 
     match = g_strdup_printf("type='signal',interface='com.mate.mplayer'");
     dbus_bus_add_match(connection, match, &error);
-    if (verbose)
-        printf("Using match: %s\n", match);
+    gm_log(verbose, G_LOG_LEVEL_INFO, "Using match: %s", match);
     g_free(match);
     dbus_error_free(&error);
 
     match = g_strdup_printf("type='signal',interface='org.mate.SettingsDaemon'");
     dbus_bus_add_match(connection, match, &error);
-    if (verbose)
-        printf("Using match: %s\n", match);
+    gm_log(verbose, G_LOG_LEVEL_INFO, "Using match: %s", match);
     g_free(match);
     dbus_error_free(&error);
     if (use_mediakeys) {
         match = g_strdup_printf("type='signal',interface='org.mate.SettingsDaemon.MediaKeys'");
         dbus_bus_add_match(connection, match, &error);
-        if (verbose)
-            printf("Using match: %s\n", match);
+        gm_log(verbose, G_LOG_LEVEL_INFO, "Using match: %s", match);
         g_free(match);
         dbus_error_free(&error);
     }
 
     dbus_connection_add_filter(connection, filter_func, NULL, NULL);
 
-    if (verbose)
-        printf("Proxy connections and Command connected\n");
+    gm_log(verbose, G_LOG_LEVEL_INFO, "Proxy connections and Command connected");
 
     if (control_id != 0) {
         path = g_strdup_printf("com.mate.mplayer.cid%i", control_id);
@@ -1177,7 +1186,9 @@ gboolean dbus_hookup(gint windowid, gint controlid)
     }
 #endif
     screensaver_disabled = FALSE;
-
+    ss_cookie_is_valid = FALSE;
+    sm_cookie_is_valid = FALSE;
+    fd_cookie_is_valid = FALSE;
     return TRUE;
 }
 
@@ -1193,127 +1204,428 @@ void dbus_unhook()
 #endif
 }
 
-void dbus_enable_screensaver()
+#ifdef DBUS_ENABLED
+static gboolean switch_screensaver_dbus_mate_screensaver(gboolean enabled)
 {
-#if SM_INHIBIT || SS_INHIBIT
-#ifdef DBUS_ENABLED
     DBusMessage *message;
-#endif
-#endif
+    DBusError error;
+    DBusMessage *reply_message;
+    gchar *app;
+    gchar *reason;
+    const gchar *busname = "org.mate.ScreenSaver";
+    const gchar *objpath = "/org/mate/ScreenSaver";
+    dbus_bool_t has_owner;
+    gboolean retval = FALSE;
 
-    if (screensaver_disabled) {
+    if (g_getenv("GM_DISABLE_ORG_MATE_SCREENSAVER")) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: disabled with env var", busname);
+        return FALSE;
+    }
 
-        if (use_xscrnsaver) {
-#ifdef XSCRNSAVER_ENABLED
-            XScreenSaverSuspend(GDK_WINDOW_XDISPLAY(gmtk_get_window(window)), FALSE);
-#endif
+    if (connection == NULL) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no connection", busname);
+        return FALSE;
+    }
 
+    dbus_error_init(&error);
+
+    has_owner = dbus_bus_name_has_owner(connection, busname, &error);
+
+    if (!has_owner || dbus_error_is_set(&error)) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no owner", busname);
+        dbus_error_free(&error);
+        return FALSE;
+    }
+
+    if (enabled) {
+        if (!ss_cookie_is_valid) {
+            return FALSE;
+        }
+        ss_cookie_is_valid = FALSE;
+
+        message = dbus_message_new_method_call(busname, objpath, busname, "UnInhibit");
+        dbus_message_append_args(message, DBUS_TYPE_UINT32, &ss_cookie, DBUS_TYPE_INVALID);
+        reply_message =
+            dbus_connection_send_with_reply_and_block(connection, message, WAIT_FOR_REPLY_TIMEOUT_MSEC, &error);
+        dbus_message_unref(message);
+        if (error.message == NULL && reply_message) {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: got a reply, yay", busname);
+            retval = TRUE;
         } else {
-#ifdef DBUS_ENABLED
-            if (connection != NULL) {
-#if SM_INHIBIT
-                message =
-                    dbus_message_new_method_call("org.mate.SessionManager",
-                                                 "/org/mate/SessionManager", "org.mate.SessionManager", "UnInhibit");
-                dbus_message_append_args(message, DBUS_TYPE_INT32, &sm_cookie, DBUS_TYPE_INVALID);
-                dbus_connection_send(connection, message, NULL);
-                dbus_message_unref(message);
-#endif
-#if SS_INHIBIT
-                message =
-                    dbus_message_new_method_call("org.mate.ScreenSaver", "/org/mate/ScreenSaver",
-                                                 "org.mate.ScreenSaver", "UnInhibit");
-                dbus_message_append_args(message, DBUS_TYPE_INT32, &ss_cookie, DBUS_TYPE_INVALID);
-                dbus_connection_send(connection, message, NULL);
-                dbus_message_unref(message);
-#endif
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no reply, nobody seems to be answering here", busname);
+        }
+        if (reply_message) {
+            dbus_message_unref(reply_message);
+        }
+        dbus_error_free(&error);
+        return retval;
+    } else {
+        message = dbus_message_new_method_call(busname, objpath, busname, "Inhibit");
+        app = g_strdup_printf("mate-mplayer");
+        reason = g_strdup_printf("playback");
+        dbus_message_append_args(message, DBUS_TYPE_STRING, &app, DBUS_TYPE_STRING, &reason, DBUS_TYPE_INVALID);
+        reply_message =
+            dbus_connection_send_with_reply_and_block(connection, message, WAIT_FOR_REPLY_TIMEOUT_MSEC, &error);
+
+        dbus_message_unref(message);
+        g_free(reason);
+        g_free(app);
+
+        if (error.message == NULL && reply_message
+            && dbus_message_get_args(reply_message, &error, DBUS_TYPE_UINT32, &ss_cookie, NULL)) {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: got a reply, yay", busname);
+            ss_cookie_is_valid = TRUE;
+            retval = TRUE;
+        } else {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no reply, nobody seems to be answering here", busname);
+        }
+        if (reply_message) {
+            dbus_message_unref(reply_message);
+        }
+        dbus_error_free(&error);
+        return retval;
+    }
+}
+
+static gboolean switch_screensaver_dbus_mate_sessionmanager(gboolean enabled)
+{
+
+    DBusError error;
+    DBusMessage *reply_message;
+    DBusMessage *message;
+    gchar *app;
+    gchar *reason;
+    gint flags;
+    gint windowid;
+    const gchar *busname = "org.mate.SessionManager";
+    const gchar *objpath = "/org/mate/SessionManager";
+    dbus_bool_t has_owner;
+    gboolean retval = FALSE;
+
+    if (g_getenv("GM_DISABLE_ORG_MATE_SESSIONMANAGER")) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: disabled with env var", busname);
+        return FALSE;
+    }
+
+    if (connection == NULL) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no connection", busname);
+        return FALSE;
+    }
+    dbus_error_init(&error);
+
+    has_owner = dbus_bus_name_has_owner(connection, busname, &error);
+
+    if (!has_owner || dbus_error_is_set(&error)) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no owner", busname);
+        dbus_error_free(&error);
+        return FALSE;
+    }
+    if (enabled) {
+        if (!sm_cookie_is_valid) {
+            return FALSE;
+        }
+        sm_cookie_is_valid = FALSE;
+
+        message = dbus_message_new_method_call(busname, objpath, busname, "UnInhibit");
+        dbus_message_append_args(message, DBUS_TYPE_UINT32, &sm_cookie, DBUS_TYPE_INVALID);
+        reply_message =
+            dbus_connection_send_with_reply_and_block(connection, message, WAIT_FOR_REPLY_TIMEOUT_MSEC, &error);
+        dbus_message_unref(message);
+        if (error.message == NULL && reply_message) {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: got a reply, yay", busname);
+            retval = TRUE;
+        } else {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no reply, nobody seems to be answering here", busname);
+        }
+        if (reply_message) {
+            dbus_message_unref(reply_message);
+        }
+        dbus_error_free(&error);
+        return retval;
+    } else {
+        message = dbus_message_new_method_call(busname, objpath, busname, "Inhibit");
+        app = g_strdup_printf("mate-mplayer");
+        reason = g_strdup_printf("playback");
+        flags = 8;
+        windowid = GDK_WINDOW_XID(gmtk_get_window(window));
+        dbus_message_append_args(message, DBUS_TYPE_STRING, &app, DBUS_TYPE_UINT32,
+                                 &windowid, DBUS_TYPE_STRING, &reason, DBUS_TYPE_UINT32, &flags, DBUS_TYPE_INVALID);
+        reply_message =
+            dbus_connection_send_with_reply_and_block(connection, message, WAIT_FOR_REPLY_TIMEOUT_MSEC, &error);
+
+        dbus_message_unref(message);
+        g_free(reason);
+        g_free(app);
+
+        if (error.message == NULL && reply_message
+            && dbus_message_get_args(reply_message, &error, DBUS_TYPE_UINT32, &sm_cookie, NULL)) {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: got a reply, yay", busname);
+            sm_cookie_is_valid = TRUE;
+            retval = TRUE;
+        } else {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no reply, nobody seems to be answering here", busname);
+        }
+        if (reply_message) {
+            dbus_message_unref(reply_message);
+        }
+        dbus_error_free(&error);
+        return retval;
+    }
+}
+
+static gboolean switch_screensaver_dbus_freedesktop_screensaver(gboolean enabled)
+{
+    DBusMessage *message;
+    DBusError error;
+    DBusMessage *reply_message;
+    gchar *app;
+    gchar *reason;
+    const gchar *busname = "org.freedesktop.ScreenSaver";
+    const gchar *objpath = "/ScreenSaver";
+    dbus_bool_t has_owner;
+    gboolean retval = FALSE;
+
+    if (g_getenv("GM_DISABLE_ORG_FREEDESKTOP_SCREENSAVER")) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: disabled with env var", busname);
+        return FALSE;
+    }
+
+    if (connection == NULL) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no connection", busname);
+        return FALSE;
+    }
+
+    dbus_error_init(&error);
+
+    has_owner = dbus_bus_name_has_owner(connection, busname, &error);
+
+    if (!has_owner || dbus_error_is_set(&error)) {
+        dbus_error_free(&error);
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no owner", busname);
+        return FALSE;
+    }
+
+    if (enabled) {
+
+        if (!fd_cookie_is_valid) {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: not enabling since disabled with a different method", busname);
+            return FALSE;
+        }
+        fd_cookie_is_valid = FALSE;
+
+        message = dbus_message_new_method_call(busname, objpath, busname, "UnInhibit");
+        dbus_message_append_args(message, DBUS_TYPE_UINT32, &fd_cookie, DBUS_TYPE_INVALID);
+        reply_message =
+            dbus_connection_send_with_reply_and_block(connection, message, WAIT_FOR_REPLY_TIMEOUT_MSEC, &error);
+        dbus_message_unref(message);
+        if (error.message == NULL && reply_message) {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: got a reply, yay", busname);
+            retval = TRUE;
+        } else {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no reply, nobody seems to be answering here", busname);
+        }
+        if (reply_message) {
+            dbus_message_unref(reply_message);
+        }
+        dbus_error_free(&error);
+        return retval;
+    } else {
+        message = dbus_message_new_method_call(busname, objpath, busname, "Inhibit");
+        app = g_strdup_printf("mate-mplayer");
+        reason = g_strdup_printf("playback");
+        dbus_message_append_args(message, DBUS_TYPE_STRING, &app, DBUS_TYPE_STRING, &reason, DBUS_TYPE_INVALID);
+        reply_message =
+            dbus_connection_send_with_reply_and_block(connection, message, WAIT_FOR_REPLY_TIMEOUT_MSEC, &error);
+
+        dbus_message_unref(message);
+        g_free(reason);
+        g_free(app);
+
+        if (error.message == NULL && reply_message
+            && dbus_message_get_args(reply_message, &error, DBUS_TYPE_UINT32, &fd_cookie, NULL)) {
+            fd_cookie_is_valid = TRUE;
+            retval = TRUE;
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: got a reply, yay", busname);
+        } else {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "%s: no reply, nobody seems to be answering here", busname);
+        }
+        if (reply_message) {
+            dbus_message_unref(reply_message);
+        }
+        dbus_error_free(&error);
+        return retval;
+    }
+}
+#endif                          // DBUS_ENABLED
+
+static gboolean switch_screensaver_xdg_screensaver(gboolean enabled)
+{
+    gchar *exe;
+    gint windowid;
+    gchar *windowid_s;
+    gboolean spawn_ret;
+    gchar **argv = NULL;
+    GSpawnFlags flags;
+    gchar *standard_output = NULL;
+    gchar *standard_error = NULL;
+    GError *error = NULL;
+    gint exit_status = 0;
+
+    if (g_getenv("GM_DISABLE_XDG_SCREENSAVER")) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "xdg-screensaver: disabled with env var");
+        return FALSE;
+    }
+
+    exe = g_find_program_in_path("xdg-screensaver");
+    if (exe == NULL) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "xdg-screensaver executable not found");
+        return FALSE;
+    }
+
+    windowid = GDK_WINDOW_XID(gmtk_get_window(window));
+    windowid_s = g_strdup_printf("%d", windowid);
+
+    argv = g_new0(gchar *, 4);
+    argv[0] = exe;
+    argv[1] = g_strdup(enabled ? "resume" : "suspend");
+    argv[2] = windowid_s;
+    argv[3] = NULL;
+
+    gm_log(verbose, G_LOG_LEVEL_DEBUG, "executing %s %s %s", argv[0], argv[1], argv[2]);
+
+    flags = 0;
+
+    spawn_ret = g_spawn_sync(NULL,      /* const gchar * working dir */
+                             argv,      /* */
+                             NULL,      /* gchar **envp */
+                             flags,     /* */
+                             NULL,      /* GSpawnChildSetupFunc child_setup */
+                             NULL,      /* gpointer user_data */
+                             &standard_output, &standard_error, &exit_status, &error);
+
+    g_free(argv[1]);
+    g_free(windowid_s);
+    windowid_s = NULL;
+    g_free(exe);
+    exe = NULL;
+    g_free(argv);
+    argv = NULL;
+
+    if (standard_output) {
+        g_strstrip(standard_output);
+        if (standard_output[0] != '\0') {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "xdg-screensaver STDOUT: %s", standard_output);
+        }
+        g_free(standard_output);
+        standard_output = NULL;
+    }
+    if (standard_error) {
+        g_strstrip(standard_error);
+        if (standard_error[0] != '\0') {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "xdg-screensaver STDERR: %s", standard_error);
+        }
+        g_free(standard_error);
+        standard_error = NULL;
+    }
+
+    if (error) {
+        if (error->message) {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "xdg-screensaver error: %s", error->message);
+        }
+        g_error_free(error);
+        error = NULL;
+    }
+
+    if (exit_status) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "xdg-screensaver exit status: %d", WEXITSTATUS(exit_status));
+        if (WIFSIGNALED(exit_status)) {
+            gm_log(verbose, G_LOG_LEVEL_DEBUG, "xdg-screensaver terminated by signal %d", WTERMSIG(exit_status));
+#ifdef WCOREDUMP
+            if (WCOREDUMP(exit_status)) {
+                gm_log(verbose, G_LOG_LEVEL_DEBUG, "xdg-screensaver dumped core");
             }
 #endif
         }
-        screensaver_disabled = FALSE;
     }
+
+    if (spawn_ret) {
+        return TRUE;
+    } else {
+        return FALSE;
+    }
+
+}
+
+#ifdef XSCRNSAVER_ENABLED
+static gboolean switch_screensaver_x11(gboolean enabled)
+{
+    Display *dpy;
+    int event_base_return, error_base_return;
+
+    if (g_getenv("GM_DISABLE_XSCREENSAVERSUSPEND")) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "XScreenSaverSuspend: disabled with env var");
+        return FALSE;
+    }
+
+    dpy = GDK_WINDOW_XDISPLAY(gmtk_get_window(window));
+    if (!XScreenSaverQueryExtension(dpy, &event_base_return, &error_base_return)) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "XScreenSaverSuspend: extension not found");
+        return FALSE;
+    }
+    XScreenSaverSuspend(dpy, !enabled);
+    return TRUE;
+}
+#endif
+
+static gboolean switch_screensaver(gboolean enabled)
+{
+    gm_log(verbose, G_LOG_LEVEL_INFO, "trying to %s screensaver", enabled ? "enable" : "disable");
+
+    if (enabled && !screensaver_disabled) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "no need to enable screensaver - already is");
+        return TRUE;
+    }
+    if (!enabled && screensaver_disabled) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "no need to disable screensaver - already is");
+        return TRUE;
+    }
+
+    screensaver_disabled = !enabled;
+
+#ifdef DBUS_ENABLED
+    if (switch_screensaver_dbus_freedesktop_screensaver(enabled)) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "switched screensaver using dbus org.freedesktop.ScreenSaver");
+        return TRUE;
+    }
+    if (switch_screensaver_dbus_mate_sessionmanager(enabled)) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "switched screensaver using dbus org.mate.SessionManager");
+        return TRUE;
+    }
+    if (switch_screensaver_dbus_mate_screensaver(enabled)) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "switched screensaver using dbus org.mate.ScreenSaver");
+        return TRUE;
+    }
+#endif
+    if (switch_screensaver_xdg_screensaver(enabled)) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "switched screensaver using xdg-screensaver");
+        return TRUE;
+    }
+#ifdef XSCRNSAVER_ENABLED
+    if (switch_screensaver_x11(enabled)) {
+        gm_log(verbose, G_LOG_LEVEL_DEBUG, "switched screensaver using X11");
+        return TRUE;
+    }
+#endif
+    gm_log(verbose, G_LOG_LEVEL_INFO, "did not find any valid method to switch screensaver");
+    return FALSE;
+}
+
+void dbus_enable_screensaver()
+{
+    (void) switch_screensaver(TRUE);
 }
 
 void dbus_disable_screensaver()
 {
-#if SM_INHIBIT || SS_INHIBIT
-#ifdef DBUS_ENABLED
-    DBusError error;
-    DBusMessage *reply_message;
-    DBusMessage *message;
-    const gchar *app;
-    const gchar *reason;
-    gint flags;
-    gint windowid;
-#endif
-#endif
-
-    if (screensaver_disabled == FALSE) {
-        if (use_xscrnsaver) {
-
-#ifdef XSCRNSAVER_ENABLED
-            XScreenSaverSuspend(GDK_WINDOW_XDISPLAY(gmtk_get_window(window)), TRUE);
-#endif
-
-        } else {
-#ifdef DBUS_ENABLED
-            if (connection != NULL) {
-#if SS_INHIBIT
-                dbus_error_init(&error);
-                message =
-                    dbus_message_new_method_call("org.mate.ScreenSaver", "/org/mate/ScreenSaver",
-                                                 "org.mate.ScreenSaver", "Inhibit");
-                app = g_strdup_printf("mate-mplayer");
-                reason = g_strdup_printf("playback");
-                dbus_message_append_args(message, DBUS_TYPE_STRING, &app, DBUS_TYPE_STRING, &reason, DBUS_TYPE_INVALID);
-                reply_message = dbus_connection_send_with_reply_and_block(connection, message, 200, &error);
-
-                if (reply_message) {
-                    dbus_message_get_args(reply_message, &error, DBUS_TYPE_INT32, &ss_cookie, NULL);
-                    dbus_message_unref(reply_message);
-                }
-                if (error.message != NULL) {
-#ifdef XSCRNSAVER_ENABLED
-                    XScreenSaverSuspend(GDK_WINDOW_XDISPLAY(gmtk_get_window(window)), TRUE);
-                    use_xscrnsaver = TRUE;
-#endif
-                }
-                dbus_message_unref(message);
-                dbus_error_free(&error);
-#endif
-
-#if SM_INHIBIT
-                dbus_error_init(&error);
-                message =
-                    dbus_message_new_method_call("org.mate.SessionManager",
-                                                 "/org/mate/SessionManager", "org.mate.SessionManager", "Inhibit");
-                app = g_strdup_printf("mate-mplayer");
-                reason = g_strdup_printf("playback");
-                flags = 8;
-                windowid = GDK_WINDOW_XID(gmtk_get_window(window));
-                dbus_message_append_args(message, DBUS_TYPE_STRING, &app, DBUS_TYPE_UINT32,
-                                         &windowid, DBUS_TYPE_STRING, &reason,
-                                         DBUS_TYPE_UINT32, &flags, DBUS_TYPE_INVALID);
-                reply_message = dbus_connection_send_with_reply_and_block(connection, message, 200, &error);
-
-                if (reply_message) {
-                    dbus_message_get_args(reply_message, &error, DBUS_TYPE_UINT32, &sm_cookie, NULL);
-                    dbus_message_unref(reply_message);
-                }
-
-                if (error.message != NULL) {
-#ifdef XSCRNSAVER_ENABLED
-                    XScreenSaverSuspend(GDK_WINDOW_XDISPLAY(gmtk_get_window(window)), TRUE);
-                    use_xscrnsaver = TRUE;
-#endif
-                }
-                dbus_error_free(&error);
-                dbus_message_unref(message);
-#endif
-            }
-#endif
-        }
-
-        screensaver_disabled = TRUE;
-    }
+    (void) switch_screensaver(FALSE);
 }

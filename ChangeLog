@@ -1,13 +1,108 @@
-Mate-MPlayer-1.0.6
-	forked gnome-mplayer-1.0.6
-
-
 Development
-	Apply patch from David Coppa that removes the depreciated slide away code
-	Separate delete and destroy events
-	Updated Portuguese translation
-	Updated Japanese translation
-	Apply fix from David Coppa to fix problem with glib 2.32
+    Hide media info when running as a plugin, caused problems with plugger testing grounds site
+	Fix issue #647, config_volume not defined when --without-alsa option is used (code may need to be cleaned up)
+	Fix issue #646, media is not positioned and sized correctly when remember preference is set
+1.0.7b
+    Updated Czech translation
+	Increase the channel parsing buffer, need to rewrite parseChannels
+    Updated Polish translation
+    Update Portuguese translation
+    Refresh po files 
+    Add in support for the anamorphic aspect ratio (2.39:1)
+	Some minor fixes to the dbus interface
+	Add uk and ru translation patches
+	Fix randomization of first file in playlist
+	Add in y, g, and J hotkeys to match mplayer hotkeys
+	Add stored DVD device to drop down if not detected by gio, workaround RedHat Bug #850402
+    Change idledata->device to mplayer_dvd_device may fix problem with dvd device being forgotten
+    Fix dconf configuration file
+    Don't enable MPRIS in plugin mode
+    Basic scrolling wheel patch from Issue #621
+	Clean up Issue #629, warning by cppcheck
+	Fix some German translations by Wolfgang Knauf
+	Fix some compiler errors noticed by Wolfgang Knauf
+	Clean up log message if volume is not updated yet
+    Remove resize handle from fullscreen and plugin windows
+    Change g_strcasecmp to g_ascii_strcasecmp to clean up complier warnings
+    Handle the new error message from gmtk-media-player
+    Allow musicbrainz to be searched by artist only
+    Bump configure.in to require gmtk 1.0.7 or higher (due to gm_log changes)
+    Change some log levels in get_cover_art
+    Fix logic in shutdown and cancel volume update callback
+    Fix a hang on startup when getting volume from pulseaudio (has something to due with GTK event queue and gtk_main not called
+    Make cover art scaling consistent
+    Move various global variables to file-local (static)
+    Clean up the title bar name display
+    Since we are using gm_log for messages, move the inits above the first message
+    Fix a few issues identified by cppcheck
+    Added make valgrind and make valgrind-suppress to src/Makefile
+    	valgrind-suppress requires this file http://www.gnome.org/~johan/gtk.suppression in your home directory
+    remove hardcoded size of langlist and codepagelist in langlist.h
+    Add a tooltip to the "Default Audio/Subtitle Language" config options
+    Include wait.h to define some macros so that code will compile on Ubuntu
+    Fix compilation issue with nautilus plugin
+    Replace printf()s with calls to new gm_log() function. If you run gnome-mplayer with G_MESSAGES_DEBUG="all" (or ="GMLIB")
+        you will see a lot more messages than with the verbose option enabled
+    Initialize a struct to 0 to remove "branch depends on uninitialized memory" error
+    Finish screensaver rework:
+       * try dbus org.freedesktop.ScreenSaver
+       * then org.gnome.SessionManager
+       * then org.gnome.ScreenSaver
+       * then the xdg-screensaver utility
+       * then the XScreenSaverSuspend() X11 call
+       This removes the SM_INHIBIT and SS_INHIBIT configure options, and the use_xscrnsaver variable and config option
+    First cut at screensaver rework: try all known methods and fall through to X11 XScreenSaverSuspend()
+    Use mutex lock to prevent thread race
+    Remove the force processing of events from an idle callback
+    Force GTK to process its events when loading a playlist
+    Don't set the title bar when the window is invisible
+    Add some error checking to GIO cover art fetch
+    Use GIO to fetch cover art instead of CURL if we have GIO support
+    Put the filename in the title bar when it is a video and a local file
+    Change set_media_info to set_title_bar, more accurately reflects the function
+    If the metadata doesn't contain title and artist try and pull it from the filename
+    Fix title display when no metadata is present
+    Potential fix for hang on load when fetching cover art
+    Apply patch from Issue #619
+    Fix a potential NULL pointer copy issue
+    Fix some cover art loading issues
+    Print GTK and GLIB versions in verbose mode
+    Fix stop action on streaming playlist Issue #617
+    Update media label on drag and drop, update title bar on stop/play
+    Add some more known metadata and make some values more dynamic
+    Implement org.mpris.MediaPlayer2.TrackList Tracks and CanEditTracks properties
+    Version bump to 1.0.7a1
+    Implement MPRIS Rate, MinimumRate and MaximumRate, requires gmtk SVN r115 or higher
+    Cleanup some debug messages and send updated Metadata on cover art fetch
+    Rework cover_art fetch process, should work much better now, also make art available over MPRIS
+    Fix crash at end of media, due to invalid store iter
+    Implement MPRIS Volume signal
+    Implement MPRIS2 CanSeek, CanGoNext, CanGoPrevious, Seek, OpenUri, SetPosition, and more Metadata
+    Implement some MPRIS2 metadata attributes
+    Implement MPRIS2 events org.mpris.MediaPlayer2.Player, properties Volume, Get (PlaybackStatus), and signal (PlaybackStatus Changed) 
+    Implement MPRIS2 events Raise, Quit, Set (Fullscreen)
+    Fix error spotted by clang
+    Start work on MPRIS dbus interface http://specifications.freedesktop.org/mpris-spec/latest/
+    Change controlid logic
+    Do not run mencoder when being called by plugin
+    Monitor sub visiblity better gnome-mplayer Issue #615, requires gmtk SVN r112 or higher to work correctly
+    Add mouse events to capture over the media window, should fix Issue #611
+    Fix Issue #613
+    Fix a couple of keyboard shortcuts as they were in the wrong shift state #,+,{,}
+    Fix usage of NULL pointer in nautilus property page
+    Initialize a variable to NULL
+    Globally initialize libCURL
+    Don't update cover art when URL call fails
+    Set the use-symbolic property on the GtkVolumeButton in GTK3
+    Fix button sensitivity based on state
+    More symbolic icon fixes
+    Use the GTK3 symbolic icons when running in GTK3 mode
+1.0.6
+    Apply patch from David Coppa that removes the depreciated slide away code
+    Separate delete and destroy events
+    Updated Portuguese translation
+    Updated Japanese translation
+    Apply fix from David Coppa to fix problem with glib 2.32
     Fix gmlib includes due to change in gmtk .pc file
     Updated Turkish translation
 1.0.6b1

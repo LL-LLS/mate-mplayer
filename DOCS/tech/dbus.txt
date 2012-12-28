@@ -57,3 +57,7 @@ dbus-send --print-reply --type=method_call --dest=com.mate.mplayer / com.mate.mp
 
 Get the currently playing URI from a player with controlid of 456
 dbus-send --print-reply --type=method_call --dest=com.mate.mplayer.cid456 / com.mate.mplayer.GetURI
+
+
+MPRIS Property Events can be monitored with this command in a separate window
+dbus-monitor "type='signal',interface='org.freedesktop.DBus.Properties'"

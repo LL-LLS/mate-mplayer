@@ -27,6 +27,18 @@
 #include "gui.h"
 #include "support.h"
 
+#ifdef GTK2_12_ENABLED
+#else
+static GtkTooltips *playlisttip;
+#endif
+
+static GtkMenu *playlist_popup_menu;
+static GtkMenuItem *playlist_set_subtitle;
+static GtkMenuItem *playlist_set_audiofile;
+static gint filecount;
+static GtkWidget *up;
+static GtkWidget *down;
+
 void update_gui()
 {
     if (gtk_tree_model_iter_n_children(GTK_TREE_MODEL(playliststore), NULL) < 2) {
@@ -193,7 +205,7 @@ gboolean playlist_drop_callback(GtkWidget * widget, GdkDragContext * dc,
 {
     gchar **list;
     gint i = 0;
-    gint playlist;
+    gboolean playlist;
 
     /* Important, check if we actually got data.  Sometimes errors
      * occure and selection_data will be NULL.
@@ -294,7 +306,7 @@ gboolean playlist_enter_callback(GtkWidget * widget, GdkEventMotion * event, gpo
     gtk_tree_view_set_enable_search(GTK_TREE_VIEW(list), TRUE);
     gtk_tree_view_set_search_column(GTK_TREE_VIEW(list), DESCRIPTION_COLUMN);
     gtk_widget_grab_focus(list);
-    setup_accelerators(FALSE);
+    setup_accelerators();
     return TRUE;
 }
 
@@ -302,7 +314,7 @@ gboolean playlist_leave_callback(GtkWidget * widget, GdkEventMotion * event, gpo
 {
     gtk_tree_view_set_enable_search(GTK_TREE_VIEW(list), FALSE);
     gtk_widget_grab_focus(play_event_box);
-    setup_accelerators(TRUE);
+    setup_accelerators();
     return TRUE;
 }
 
@@ -417,7 +429,7 @@ void load_playlist(GtkWidget * widget, void *data)
 
         create_folder_progress_window();
         if (!parse_playlist(filename)) {
-            add_item_to_playlist(filename, 1);
+            add_item_to_playlist(filename, TRUE);
         }
         destroy_folder_progress_window();
     }
@@ -429,7 +441,7 @@ void load_playlist(GtkWidget * widget, void *data)
 void add_item_to_playlist_callback(gpointer data, gpointer user_data)
 {
     gchar *filename = (gchar *) data;
-    gint playlist;
+    gboolean playlist;
 
     playlist = detect_playlist(filename);
     if (!playlist) {
@@ -465,7 +477,7 @@ void add_folder_to_playlist_callback(gpointer data, gpointer user_data)
     file = g_file_new_for_uri(uri);
     dir = g_file_enumerate_children(file, "standard::*", G_FILE_QUERY_INFO_NONE, NULL, &error);
     if (error != NULL)
-        printf("error message = %s\n", error->message);
+        gm_log(verbose, G_LOG_LEVEL_MESSAGE, "error message = %s", error->message);
 
     if (dir != NULL) {
         info = g_file_enumerator_next_file(dir, NULL, NULL);
@@ -645,7 +657,7 @@ void add_folder_to_playlist(GtkWidget * widget, void *data)
     gm_pref_store_free(gm_store);
     gtk_widget_destroy(dialog);
     message = g_markup_printf_escaped(ngettext("\n\tFound %i file\n", "\n\tFound %i files\n", filecount), filecount);
-    g_strlcpy(idledata->media_info, message, 1024);
+    g_strlcpy(idledata->media_info, message, sizeof(idledata->media_info));
     g_free(message);
     g_idle_add(set_media_label, idledata);
 

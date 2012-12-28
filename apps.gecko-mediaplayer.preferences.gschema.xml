@@ -1,5 +1,5 @@
 <schemalist>
-  <schema id="apps.gecko-mediaplayer.preferences" path="/apps/mate-mplayer/preferences/">
+  <schema id="apps.gecko-mediaplayer.preferences" path="/org/mate/gecko-mediaplayer/preferences/">
     <key name="disable-qt" type="b">
       <default>false</default>
       <summary>Disable QuickTime</summary>

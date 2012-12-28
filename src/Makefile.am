@@ -60,7 +60,9 @@ mate_mplayer_SOURCES = \
 	../pixmaps/media-skip-backward.xpm \
 	../pixmaps/media-skip-forward.xpm \
 	../pixmaps/view-fullscreen.xpm \
-	langlist.h
+	langlist.h \
+	mpris-interface.c \
+	mpris-interface.h
 
 
 mate_mplayer_LDFLAGS = 
@@ -117,3 +119,7 @@ indent:
 cppcheck:
 	cppcheck -q -a -v -f -j3 .
 	
+valgrind:
+	G_SLICE=always-malloc G_DEBUG=gc-friendly valgrind --tool=memcheck --leak-check=full --leak-resolution=high --num-callers=20 --log-file=vgdump ./mate-mplayer 
+valgrind-suppress:
+	G_SLICE=always-malloc G_DEBUG=gc-friendly valgrind --tool=memcheck --leak-check=full --leak-resolution=high --num-callers=20 --log-file=vgdump --suppressions=$(HOME)/gtk.suppression ./mate-mplayer 
