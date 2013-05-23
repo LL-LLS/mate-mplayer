@@ -56,9 +56,9 @@ else
 install-data-hook: update-icon-cache
 endif
 
-gsettings_ENUM_NAMESPACE = apps.mate-mplayer.preferences
+gsettings_ENUM_NAMESPACE = org.mate.mate-mplayer.preferences
 gsettings_ENUM_FILES = $(top_srcdir)/src/*.h
-gsettings_SCHEMAS = apps.mate-mplayer.preferences.gschema.xml apps.gecko-mediaplayer.preferences.gschema.xml
+gsettings_SCHEMAS = org.mate.mate-mplayer.preferences.gschema.xml org.mate.gecko-mediaplayer.preferences.gschema.xml
 
 @GSETTINGS_RULES@
 

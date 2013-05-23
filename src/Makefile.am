@@ -19,7 +19,8 @@ INCLUDES = \
     $(NOTIFY_CFLAGS) \
     $(GPOD_CFLAGS) \
     $(MUSICBRAINZ_CFLAGS) \
-	$(XSCRNSAVER_CFLAGS)    
+	$(XSCRNSAVER_CFLAGS) \
+    $(LIBGDA_CFLAGS)   
 
 AM_CFLAGS =\
 	 -Wall\
@@ -31,7 +32,8 @@ AM_CFLAGS =\
      $(MATECONF_DEFINES) \
      $(NOTIFY_DEFINES) \
      $(GPOD_DEFINES) \
-     $(MUSICBRAINZ_DEFINES)
+     $(MUSICBRAINZ_DEFINES) \
+     $(LIBGDA_DEFINES)
      ## -DGTK_DISABLE_DEPRECATED 
      ## -DGSEAL_ENABLE
 
@@ -62,7 +64,9 @@ mate_mplayer_SOURCES = \
 	../pixmaps/view-fullscreen.xpm \
 	langlist.h \
 	mpris-interface.c \
-	mpris-interface.h
+	mpris-interface.h \
+	database.c \
+	database.h
 
 
 mate_mplayer_LDFLAGS = 
@@ -81,7 +85,8 @@ mate_mplayer_LDADD = \
     $(NOTIFY_LIBS) \
     $(GPOD_LIBS) \
     $(MUSICBRAINZ_LIBS) \
-    $(XSCRNSAVER_LIBS)
+    $(XSCRNSAVER_LIBS) \
+    $(LIBGDA_LIBS)
 
 if HAVE_CAJA
 

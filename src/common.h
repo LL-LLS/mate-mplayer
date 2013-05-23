@@ -24,6 +24,11 @@
 
 #include <gtk/gtk.h>
 #include <gmlib.h>
+#ifdef LIBGDA_ENABLED
+#include <libgda/libgda.h>
+#endif
+
+
 
 #ifdef GIO_ENABLED
 #include <gio/gio.h>
@@ -260,6 +265,9 @@ typedef struct _MetaData {
     gint width;
     gint height;
     gboolean playable;
+    gboolean resumable;
+    gfloat position;
+    gboolean valid;
 } MetaData;
 
 typedef struct _ButtonDef {
@@ -395,6 +403,7 @@ gboolean cancel_folder_load;
 
 GThreadPool *retrieve_metadata_pool;
 GMutex *retrieve_mutex;
+GMutex *set_mutex;
 
 gboolean use_mediakeys;
 gboolean use_defaultpl;
@@ -459,6 +468,7 @@ gboolean set_next(void *data);
 gboolean set_quit(void *data);
 gboolean set_kill_mplayer(void *data);
 gboolean set_position(void *data);
+gboolean hookup_volume(void *data);
 gboolean set_volume(void *data);
 gboolean set_fullscreen(void *data);
 gboolean set_show_controls(void *data);
@@ -512,6 +522,10 @@ gboolean async_play_iter(void *data);
 #ifdef GTK2_12_ENABLED
 GtkRecentManager *recent_manager;
 void recent_manager_changed_callback(GtkRecentManager * recent_manager, gpointer data);
+#endif
+
+#ifdef LIBGDA_ENABLED
+GdaConnection *db_connection;
 #endif
 
 #endif                          /* _COMMON_H */

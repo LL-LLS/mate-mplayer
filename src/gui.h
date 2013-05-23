@@ -48,6 +48,7 @@ GtkWidget *window;
 
 GtkMenuItem *menuitem_edit_random;
 GtkMenuItem *menuitem_edit_loop;
+GtkMenuItem *menuitem_edit_play_single;
 GtkWidget *repeat;
 GtkWidget *shuffle;
 GtkMenuItem *menuitem_edit_select_audio_lang;
@@ -79,6 +80,8 @@ GtkWidget *fs_event_box;
 
 GmtkMediaTracker *tracker;
 GtkWidget *vol_slider;
+
+GtkWidget *conf_volume_label;
 
 #ifdef GTK2_12_ENABLED
 #else

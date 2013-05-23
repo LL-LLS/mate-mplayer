@@ -1123,6 +1123,7 @@ MetaData *get_basic_metadata(gchar * uri)
         ret->audio_codec = g_strdup(audio_codec);
         ret->video_codec = g_strdup(video_codec);
         ret->demuxer = g_strdup(demuxer);
+        ret->playable = TRUE;
         ret->width = width;
         ret->height = height;
     }
@@ -1139,6 +1140,44 @@ MetaData *get_basic_metadata(gchar * uri)
 
     return ret;
 }
+
+void free_metadata(MetaData * data)
+{
+
+    if (data == NULL)
+        return;
+
+    if (data->uri)
+        g_free(data->uri);
+
+    if (data->title)
+        g_free(data->title);
+
+    if (data->artist)
+        g_free(data->artist);
+
+    if (data->album)
+        g_free(data->album);
+
+    if (data->length)
+        g_free(data->length);
+
+    if (data->subtitle)
+        g_free(data->subtitle);
+
+    if (data->audio_codec)
+        g_free(data->audio_codec);
+
+    if (data->video_codec)
+        g_free(data->video_codec);
+
+    if (data->demuxer)
+        g_free(data->demuxer);
+
+    g_free(data);
+
+}
+
 
 MetaData *get_metadata(gchar * uri)
 {
@@ -1433,6 +1472,9 @@ MetaData *get_metadata(gchar * uri)
         ret->width = width;
         ret->height = height;
         ret->playable = (demuxer == NULL && missing_header == FALSE) ? FALSE : TRUE;
+#ifdef LIBGDA_ENABLED
+        insert_update_db_metadata(db_connection, uri, ret);
+#endif
     }
 
     g_free(title);
@@ -1628,54 +1670,65 @@ gboolean add_item_to_playlist(const gchar * uri, gboolean playlist)
     gm_log(verbose, G_LOG_LEVEL_INFO, "adding %s to playlist (cancel = %s)", uri,
            gm_bool_to_string(cancel_folder_load));
     local_uri = g_strdup(uri);
-    if (!device_name(local_uri) && !streaming_media(local_uri)) {
-        if (playlist) {
+#ifdef LIBGDA_ENABLED
+    data = get_db_metadata(db_connection, uri);
+#endif
+    if (data == NULL || !data->valid) {
+        gm_log(verbose, G_LOG_LEVEL_INFO, "metadata retrieve from database is not valid, requesting it from media");
+        if (!device_name(local_uri) && !streaming_media(local_uri)) {
+            if (playlist) {
+                data = (MetaData *) g_new0(MetaData, 1);
+                data->title = g_strdup_printf("%s", uri);
+            } else {
+                retrieve = TRUE;
+                data = get_basic_metadata(local_uri);
+            }
+        } else if (g_ascii_strncasecmp(uri, "cdda://", strlen("cdda://")) == 0) {
             data = (MetaData *) g_new0(MetaData, 1);
-            data->title = g_strdup_printf("%s", uri);
-        } else {
+            data->title = g_strdup_printf("CD Track %s", uri + strlen("cdda://"));
+            data->playable = TRUE;
+        } else if (device_name(local_uri)) {
+            if (g_ascii_strncasecmp(uri, "dvdnav://", strlen("dvdnav://")) == 0) {
+                loop = 1;
+            }
             retrieve = TRUE;
+            if (g_ascii_strncasecmp(uri, "dvb://", strlen("dvb://")) == 0) {
+                retrieve = FALSE;
+            }
+            if (g_ascii_strncasecmp(uri, "tv://", strlen("tv://")) == 0) {
+                retrieve = FALSE;
+            }
             data = get_basic_metadata(local_uri);
-        }
-    } else if (g_ascii_strncasecmp(uri, "cdda://", strlen("cdda://")) == 0) {
-        data = (MetaData *) g_new0(MetaData, 1);
-        data->title = g_strdup_printf("CD Track %s", uri + strlen("cdda://"));
-    } else if (device_name(local_uri)) {
-        if (g_ascii_strncasecmp(uri, "dvdnav://", strlen("dvdnav://")) == 0) {
-            loop = 1;
-        }
-        retrieve = TRUE;
-        if (g_ascii_strncasecmp(uri, "dvb://", strlen("dvb://")) == 0) {
-            retrieve = FALSE;
-        }
-        if (g_ascii_strncasecmp(uri, "tv://", strlen("tv://")) == 0) {
-            retrieve = FALSE;
-        }
-        data = get_basic_metadata(local_uri);
 
-    } else {
+        } else {
 
-        if (g_str_has_prefix(uri, "http://")) {
-            unescaped = switch_protocol(uri, "mmshttp");
-            g_free(local_uri);
-            local_uri = g_strdup(unescaped);
+            if (g_str_has_prefix(uri, "http://")) {
+                unescaped = switch_protocol(uri, "mmshttp");
+                g_free(local_uri);
+                local_uri = g_strdup(unescaped);
+                g_free(unescaped);
+            }
+#ifdef GIO_ENABLED
+            unescaped = g_uri_unescape_string(uri, NULL);
+#else
+            unescaped = g_strdup(uri);
+#endif
+            data = (MetaData *) g_new0(MetaData, 1);
+            data->playable = TRUE;
+            slash = g_strrstr(unescaped, "/");
+            if (slash != NULL && strlen(slash + sizeof(gchar)) > 0) {
+                data->title = g_strdup_printf("[Stream] %s", slash + sizeof(gchar));
+            } else {
+                data->title = g_strdup_printf("[Stream] %s", unescaped);
+            }
             g_free(unescaped);
         }
-#ifdef GIO_ENABLED
-        unescaped = g_uri_unescape_string(uri, NULL);
-#else
-        unescaped = g_strdup(uri);
-#endif
-        data = (MetaData *) g_new0(MetaData, 1);
-        slash = g_strrstr(unescaped, "/");
-        if (slash != NULL && strlen(slash + sizeof(gchar)) > 0) {
-            data->title = g_strdup_printf("[Stream] %s", slash + sizeof(gchar));
-        } else {
-            data->title = g_strdup_printf("[Stream] %s", unescaped);
-        }
-        g_free(unescaped);
+    } else {
+        idledata->width = data->width;
+        idledata->height = data->height;
     }
 
-    if (data) {
+    if (data && data->playable == TRUE) {
         gtk_list_store_append(playliststore, &localiter);
         gtk_list_store_set(playliststore, &localiter, ITEM_COLUMN, local_uri,
                            DESCRIPTION_COLUMN, data->title,
@@ -1702,6 +1755,12 @@ gboolean add_item_to_playlist(const gchar * uri, gboolean playlist)
             }
             gm_log(verbose, G_LOG_LEVEL_DEBUG, "adding retrieve_metadata(%s) to pool", uri);
             g_thread_pool_push(retrieve_metadata_pool, (gpointer) g_strdup(uri), NULL);
+        } else {
+            if (!data->valid) {
+#ifdef LIBGDA_ENABLED
+                insert_update_db_metadata(db_connection, uri, data);
+#endif
+            }
         }
 
         set_item_add_info(local_uri);
@@ -1723,6 +1782,27 @@ gboolean add_item_to_playlist(const gchar * uri, gboolean playlist)
         return FALSE;
     }
 
+}
+
+GtkTreeIter *find_iter_by_uri(const gchar * uri)
+{
+    GtkTreeIter *iter = NULL;
+    gchar *localuri;
+
+    iter = g_new0(GtkTreeIter, 1);
+    gtk_tree_model_get_iter_first(GTK_TREE_MODEL(playliststore), iter);
+    if (gtk_list_store_iter_is_valid(playliststore, iter)) {
+        do {
+            gtk_tree_model_get(GTK_TREE_MODEL(playliststore), iter, ITEM_COLUMN, &localuri, -1);
+            if (g_ascii_strcasecmp(uri, localuri) == 0) {
+                // we found the current iter
+                break;
+            }
+            g_free(localuri);
+        } while (gtk_tree_model_iter_next(GTK_TREE_MODEL(playliststore), iter));
+    }
+
+    return iter;
 }
 
 gboolean is_first_item_in_playlist(GtkTreeIter * iter)
@@ -2286,6 +2366,10 @@ gchar *find_gpod_mount_point()
             if (g_file_test(pathname, G_FILE_TEST_IS_DIR))
                 ret = g_strdup(mnt->mnt_dir);
             g_free(pathname);
+            pathname = g_strdup_printf("%s/iTunes_Control", mnt->mnt_dir);
+            if (g_file_test(pathname, G_FILE_TEST_IS_DIR))
+                ret = g_strdup(mnt->mnt_dir);
+            g_free(pathname);
         }
     }
     while (mnt);
@@ -2484,6 +2568,8 @@ gpointer get_cover_art(gpointer data)
     gchar *thumbnail;
 #ifdef GIO_ENABLED
     GFile *file;
+#endif
+#ifdef DISABLED_GIO_ENABLED
     GInputStream *stream_in;
     gchar buf[2048];
     gint bytes;
@@ -2631,7 +2717,7 @@ gpointer get_cover_art(gpointer data)
 
             art = fopen(path, "wb");
             if (art) {
-#ifdef GIO_ENABLED
+#ifdef DISABLED_GIO_ENABLED
                 file = g_file_new_for_uri(url);
                 stream_in = (GInputStream *) g_file_read(file, NULL, NULL);
                 if (stream_in) {
@@ -2692,11 +2778,7 @@ gpointer get_cover_art(gpointer data)
     }
     g_free(cache_file);
 
-    g_free(metadata->uri);
-    g_free(metadata->title);
-    g_free(metadata->artist);
-    g_free(metadata->album);
-    g_free(metadata);
+    free_metadata(metadata);
     return NULL;
 }
 #else
@@ -2705,11 +2787,7 @@ gpointer get_cover_art(gpointer data)
     MetaData *metadata = (MetaData *) data;
 
     gm_log(verbose, G_LOG_LEVEL_INFO, "libcurl required for cover art retrieval");
-    g_free(metadata->uri);
-    g_free(metadata->title);
-    g_free(metadata->artist);
-    g_free(metadata->album);
-    g_free(metadata);
+    free_metadata(metadata);
     return NULL;
 }
 
@@ -2822,7 +2900,11 @@ gboolean unmap_af_export_file(gpointer data)
         return TRUE;
 
     if (idle->mapped_af_export) {
+#if GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION >= 22
+        g_mapped_file_unref(idle->mapped_af_export);
+#else
         g_mapped_file_free(idle->mapped_af_export);
+#endif
         idle->mapped_af_export = NULL;
     }
 
