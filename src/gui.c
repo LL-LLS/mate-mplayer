@@ -634,6 +634,7 @@ void adjust_layout()
         if (!enable_global_menu) {
             gmtk_get_allocation(menubar, &alloc);
             gm_log(verbose, G_LOG_LEVEL_DEBUG, "menubar = %i", alloc.height);
+        if (!fullscreen)
             total_height += alloc.height;
             gm_log(verbose, G_LOG_LEVEL_DEBUG, "total_height = %i", total_height);
         }
