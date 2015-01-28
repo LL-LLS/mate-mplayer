@@ -2120,7 +2120,8 @@ gboolean window_key_callback(GtkWidget * widget, GdkEventKey * event, gpointer u
         case FILE_OPEN_LOCATION:
             break;
         case EDIT_SCREENSHOT:
-            gmtk_media_player_send_command(GMTK_MEDIA_PLAYER(media), COMMAND_TAKE_SCREENSHOT);
+            if (fullscreen)
+                gmtk_media_player_send_command(GMTK_MEDIA_PLAYER(media), COMMAND_TAKE_SCREENSHOT);
             return FALSE;
         case EDIT_PREFERENCES:
             break;
