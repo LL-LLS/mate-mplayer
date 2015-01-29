@@ -96,7 +96,9 @@ caja_PROGRAMS = libmate-mplayer-properties-page.so
 libmate_mplayer_properties_page_so_SOURCES = \
     ../config.h \
     mime_types.h \
-    caja_property_page.c
+    caja_property_page.c \
+    property_page_common.c \
+    property_page_common.h
 
 libmate_mplayer_properties_page_so_CFLAGS = -fPIC \
     $(CAJA_CFLAGS) \
