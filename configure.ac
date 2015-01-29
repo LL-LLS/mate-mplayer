@@ -1,8 +1,8 @@
 dnl Process this file with autoconf to produce a configure script.
 dnl Created by Anjuta application wizard.
 
-AC_INIT(configure.in)
-AM_INIT_AUTOMAKE(mate-mplayer, 1.0.8)
+AC_INIT([mate-mplayer],[1.0.9],[https://github.com/NiceandGently/mate-mplayer])
+AM_INIT_AUTOMAKE([1.11 no-dist-gzip dist-xz tar-ustar check-news])
 AM_CONFIG_HEADER(config.h)
 AM_MAINTAINER_MODE([enable])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
@@ -305,13 +305,6 @@ if test ${BACKEND} = "gsettings"; then
     AM_CONDITIONAL([MATECONF_SCHEMAS_INSTALL],[false])
     USE_GSETTINGS=1
     AC_SUBST(USE_GSETTINGS)
-elif test ${BACKEND} = "mateconf"; then
-    AC_MSG_NOTICE([gmlib is using ${BACKEND} for preference storage])
-    GSETTINGS_RULES=""
-    AC_SUBST(GSETTINGS_RULES)
-    AM_MATECONF_SOURCE_2 
-    USE_MATECONF=1
-    AC_SUBST(USE_MATECONF)    
 elif test ${BACKEND} = "keystore"; then
     GSETTINGS_RULES=""
     AC_SUBST(GSETTINGS_RULES)
