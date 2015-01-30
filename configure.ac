@@ -283,6 +283,29 @@ if test x$HAVE_CAJA = "xyes"; then
 fi
 AM_CONDITIONAL(HAVE_CAJA, test x$HAVE_CAJA = "xyes")
 
+AC_ARG_ENABLE(nemo,
+        AC_HELP_STRING([--enable-nemo],[compile the nemo plugin]),
+        [case "${enableval}" in
+        yes) ENABLE_NEMO=yes ;;
+        no) ENABLE_NEMO=no ;;
+        *) AC_MSG_ERROR(bad value ${enableval} for --enable-caja) ;;
+        esac],
+        [ENABLE_NEMO=yes]) dnl Default value
+
+if test x$ENABLE_NEMO = "xyes" ; then
+        PKG_CHECK_MODULES(NEMO, libnemo-extension,
+                        [HAVE_NEMO=yes], [HAVE_NEMO=no])
+fi
+
+AC_SUBST(NEMO_CFLAGS)
+AC_SUBST(NEMO_LIBS)
+if test x$HAVE_NEMO = "xyes"; then
+        AC_DEFINE(HAVE_NEMO, 1, [defined if you build the nemo plugin])
+        NEMODIR=`pkg-config --variable=extensiondir libnemo-extension`
+        AC_SUBST(NEMODIR)
+fi
+AM_CONDITIONAL(HAVE_NEMO, test x$HAVE_NEMO = "xyes")
+
 AC_ARG_ENABLE(gseal,
 		AC_HELP_STRING([--enable-gseal],[Enable flag for testing]),
         [case "${enableval}" in
@@ -327,6 +350,5 @@ icons/48x48/Makefile
 icons/scalable/Makefile
 src/Makefile
 po/Makefile.in
-mate-mplayer.spec
 mate-mplayer.schemas
 ])
