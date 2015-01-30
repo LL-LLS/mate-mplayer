@@ -1,4 +1,48 @@
 Development
+1.0.9
+    Fix storing of disable fetch cover art preference
+    Work on fixing fullscreen mode hanging when control menu goes thru show/hide sequence
+    Prevent window from going fullscreen on startup when embedded
+    Tracker size adjustments so that it does not look wrong in gecko-mediaplayer
+    Set audio and subtitle language to English by default if not specified in configuration
+        better than Zuni by default
+    Hide debug message
+1.0.9b
+    Fix problem with preferences dialog not having focus when opened
+    Fix problem with subtitles reappearing after they have been disabled after
+        pause/play cycle Issue #703
+    Set window properties to be common for all the created windows
+    Updated Japanese translation
+    Updated Hungarian translation
+    Updated Polish translation
+    Updated Portuguese translation
+1.0.9a
+    Fix backwards chapter seeking
+    Use display_name in mpris title when title cannot be pulled from gmtk
+	Fix problem with DVD images and folders not playing
+    Consolidate nemo and nautilus plugin code so that it is shared
+    Fix problem with --fullscreen command line flag
+    Apply patch from Issue 688 to make icons work in RTL mode
+    Update Korean translation
+    Escape the name when obtained from the URI
+	Only restart if resume position is > 0
+	Protect for media == null in dbus-interface
+    Tighten up the display in the nemo/nautilus plugins
+    Add support for building Nemo plugin
+	Fix GDK Warning
+	Fix error in committed media resume preference
+	Add preference (Interface) Media Resume (Always Ask (default), Always without asking, Never) 
+	Allow "Default Volume" (alsa disabled) to be changed
+	Set initial volume in gmtk_media_player when passed on command line
+	Disable screenshot menu when hardware codec are used with xvmc or vdpau
+	Add ability to specify mplayer binary on command line
+	Fix problem with screenshot being done twice in mplayer2 GMTK Issue #14
+	Updated Korean translation
+	Apply patch to make fullscreen work under tiled window managers
+	Set pref_volume to stored volume when asound is disabled
+	make --volume work with and without softvol enabled
+	cmd line option --volume should only work with softvol enabled
+	Fix problem with remembered softvol not being loaded Issue #675
 1.0.8
 	Updated Spanish translation	
 	Apply patch from Issue 673
