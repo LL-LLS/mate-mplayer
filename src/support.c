@@ -1049,6 +1049,7 @@ MetaData *get_basic_metadata(gchar * uri)
 
     if (device_name(uri)) {
         name = g_strdup(uri);
+        escaped_name = g_strdup(name);
     } else {
 #ifdef GIO_ENABLED
         file = g_file_new_for_uri(uri);
@@ -1712,7 +1713,6 @@ gboolean add_item_to_playlist(const gchar * uri, gboolean playlist)
                 retrieve = FALSE;
             }
             data = get_basic_metadata(local_uri);
-
         } else {
 
             if (g_str_has_prefix(uri, "http://")) {
