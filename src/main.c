@@ -854,9 +854,13 @@ int main(int argc, char *argv[])
     // I assume once we have truly fixed locking/threading this will work....
     // gdk_threads_init();
     if (!g_thread_supported())
-        g_thread_init(NULL);
+#if !GLIB_CHECK_VERSION (2, 32, 0)
+        g_thread_init (NULL);
+#endif
 
-    g_type_init();
+#if !GLIB_CHECK_VERSION (2, 35, 0)
+    g_type_init ();
+#endif
     gtk_init(&argc, &argv);
     g_setenv("PULSE_PROP_media.role", "video", TRUE);
 
