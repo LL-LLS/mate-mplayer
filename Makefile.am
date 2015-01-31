@@ -30,7 +30,15 @@ prefapp_DATA = mate-mplayer.xml
 manpagedir = @mandir@/man1
 manpage_DATA = mate-mplayer.1
 
-EXTRA_DIST = $(mate_mplayerdoc_DATA) $(desktop_DATA) $(schema_DATA) $(manpage_DATA) $(prefapp_DATA) $(gsettings_SCHEMAS) mate-mplayer.spec.in config.h.in
+EXTRA_DIST = \
+	autogen.sh \
+	$(mate_mplayerdoc_DATA) \
+	$(desktop_DATA) \
+	$(schema_DATA) \
+	$(manpage_DATA) \
+	$(prefapp_DATA) \
+	$(gsettings_SCHEMAS) \
+	config.h.in
 
 # Copy all the spec files. Of cource, only one is actually used.
 dist-hook:
