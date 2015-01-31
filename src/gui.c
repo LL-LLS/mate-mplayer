@@ -635,9 +635,9 @@ void adjust_layout()
         if (!enable_global_menu) {
             gmtk_get_allocation(menubar, &alloc);
             gm_log(verbose, G_LOG_LEVEL_DEBUG, "menubar = %i", alloc.height);
-        if (!fullscreen)
-            total_height += alloc.height;
-            gm_log(verbose, G_LOG_LEVEL_DEBUG, "total_height = %i", total_height);
+            if (!fullscreen)
+                total_height += alloc.height;
+                gm_log(verbose, G_LOG_LEVEL_DEBUG, "total_height = %i", total_height);
         }
     }
 
@@ -1687,10 +1687,10 @@ gboolean hookup_volume(void *data)
         if (gm_audio_update_device(&audio_device)) {
             if (softvol || audio_device.type == AUDIO_TYPE_SOFTVOL) {
                 gm_audio_set_server_volume_update_callback(&audio_device, NULL);
-             } else {
-                 gm_audio_set_server_volume_update_callback(&audio_device, set_volume);
-             }
-         }
+            } else {
+                gm_audio_set_server_volume_update_callback(&audio_device, set_volume);
+            }
+        }
     }
     gm_log(verbose, G_LOG_LEVEL_DEBUG, "out hookup_volume is %f", audio_device.volume);
     return FALSE;
@@ -4226,6 +4226,7 @@ void menuitem_fs_callback(GtkMenuItem * menuitem, void *data)
 #endif
 #endif
             }
+
             screen = gtk_window_get_screen(GTK_WINDOW(window));
             gtk_window_set_screen(GTK_WINDOW(fs_window), screen);
             gtk_window_set_title(GTK_WINDOW(fs_window), _("Mate MPlayer Fullscreen"));
@@ -4843,6 +4844,7 @@ void menuitem_advanced_callback(GtkMenuItem * menuitem, void *data)
     gtk_window_set_icon(GTK_WINDOW(adv_window), pb_icon);
     gtk_window_set_transient_for(GTK_WINDOW(adv_window), GTK_WINDOW(window));
     gtk_window_set_position(GTK_WINDOW(adv_window), GTK_WIN_POS_CENTER_ON_PARENT);
+
     gtk_window_set_title(GTK_WINDOW(adv_window), _("Video Picture Adjustments"));
 
 #if GTK_MAJOR_VERSION == 3 && GTK_MINOR_VERSION >= 2
@@ -5694,12 +5696,12 @@ void menuitem_config_callback(GtkMenuItem * menuitem, void *data)
 #endif
         if (config_resume_mode != NULL) {
 #ifdef GTK2_24_ENABLED
- 	
+
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(config_resume_mode), _("Always ask"));
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(config_resume_mode), _("Always resume without asking"));
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(config_resume_mode), _("Never resume"));
 #else
- 	
+
         gtk_combo_box_append_text(GTK_COMBO_BOX(config_resume_mode), _("Always ask"));
         gtk_combo_box_append_text(GTK_COMBO_BOX(config_resume_mode), _("Always resume without asking"));
         gtk_combo_box_append_text(GTK_COMBO_BOX(config_resume_mode), _("Never resume"));
@@ -6236,7 +6238,8 @@ void menuitem_config_callback(GtkMenuItem * menuitem, void *data)
     gtk_misc_set_alignment(GTK_MISC(conf_label), 0.0, 1.0);
     gtk_misc_set_padding(GTK_MISC(conf_label), 12, 0);
     gtk_table_attach(GTK_TABLE(conf_table), conf_label, 0, 1, i, i + 1, GTK_FILL, GTK_SHRINK, 0, 0);
-    gtk_table_attach(GTK_TABLE(conf_table), conf_label, 0, 1, i, i + 1, GTK_FILL | GTK_EXPAND, GTK_SHRINK, 0, 0);
+    gtk_table_attach(GTK_TABLE(conf_table), config_subtitle_fuzziness, 1, 2, i, i + 1, GTK_FILL | GTK_EXPAND,
+                     GTK_SHRINK, 0, 0);
     i++;
 
 
@@ -6248,7 +6251,7 @@ void menuitem_config_callback(GtkMenuItem * menuitem, void *data)
     gtk_label_set_use_markup(GTK_LABEL(conf_label), TRUE);
     gtk_misc_set_alignment(GTK_MISC(conf_label), 0.0, 0.0);
     gtk_misc_set_padding(GTK_MISC(conf_label), 0, 6);
-    gtk_table_attach(GTK_TABLE(conf_table), conf_label, 0, 2, i, i + 1, GTK_FILL | GTK_EXPAND, GTK_SHRINK, 0, 0);
+    gtk_table_attach(GTK_TABLE(conf_table), conf_label, 0, 1, i, i + 1, GTK_FILL | GTK_EXPAND, GTK_SHRINK, 0, 0);
     i++;
 
     conf_label = gtk_label_new(_("Media Resume:"));
@@ -6815,7 +6818,7 @@ void player_attribute_changed_callback(GmtkMediaTracker * tracker, GmtkMediaPlay
 #endif
         if (vo == NULL
             || (use_hardware_codecs == TRUE && (g_ascii_strncasecmp(vo, "xvmc", strlen("xvmc")) == 0
-                 || g_ascii_strncasecmp(vo, "vdpau", strlen("vdpau")) == 0))) {
+                                                || g_ascii_strncasecmp(vo, "vdpau", strlen("vdpau")) == 0))) {
             gtk_widget_set_sensitive(GTK_WIDGET(menuitem_edit_take_screenshot), FALSE);
         } else {
             gtk_widget_set_sensitive(GTK_WIDGET(menuitem_edit_take_screenshot), idledata->videopresent);
@@ -8561,7 +8564,7 @@ void show_window(gint windowid)
             }
         } else {
             gtk_widget_set_size_request(window,-1,-1);
-            gtk_widget_set_size_request(GTK_WIDGET(tracker), 100, -1);
+            gtk_widget_set_size_request(GTK_WIDGET(tracker), 200, -1);
             }
 
     } else {

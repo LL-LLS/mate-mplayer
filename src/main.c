@@ -625,10 +625,10 @@ gint play_iter(GtkTreeIter * playiter, gint restart_second)
                                                            GTK_BUTTONS_YES_NO,
                                                            _("Resume Playback of %s at %s"),
                                                            metadata->title, position_text);
-            if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_YES) {
-                gmtk_media_tracker_set_length(tracker, metadata->length_value);
-                gmtk_media_tracker_set_position(tracker, metadata->position);
-                gmtk_media_player_set_attribute_double(GMTK_MEDIA_PLAYER(media), ATTRIBUTE_START_TIME,
+                if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_YES) {
+                    gmtk_media_tracker_set_length(tracker, metadata->length_value);
+                    gmtk_media_tracker_set_position(tracker, metadata->position);
+                    gmtk_media_player_set_attribute_double(GMTK_MEDIA_PLAYER(media), ATTRIBUTE_START_TIME,
                                                            metadata->position);
                 }
                 gtk_widget_destroy(dialog);
@@ -859,7 +859,7 @@ int main(int argc, char *argv[])
     g_type_init();
     gtk_init(&argc, &argv);
     g_setenv("PULSE_PROP_media.role", "video", TRUE);
-    setlocale(LC_NUMERIC, "C");
+
 #ifndef OS_WIN32
     sa.sa_handler = hup_handler;
     sigemptyset(&sa.sa_mask);

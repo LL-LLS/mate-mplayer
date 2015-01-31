@@ -1082,10 +1082,10 @@ MetaData *get_basic_metadata(gchar * uri)
     if (title == NULL || strlen(title) == 0) {
         localuri = g_uri_unescape_string(uri, NULL);
         p = g_strrstr(localuri, ".");
-        p = g_strrstr(p - 1, "/");
         if (p)
             p[0] = '\0';
         p = g_strrstr(localuri, "/");
+        p = g_strrstr(p - 1, "/");
         if (p) {
             artist = g_strdup(p + 1);
             p = strstr(artist, " - ");
@@ -1713,8 +1713,8 @@ gboolean add_item_to_playlist(const gchar * uri, gboolean playlist)
                 retrieve = FALSE;
             }
             data = get_basic_metadata(local_uri);
-        } else {
 
+        } else {
             if (g_str_has_prefix(uri, "http://")) {
                 unescaped = switch_protocol(uri, "mmshttp");
                 g_free(local_uri);

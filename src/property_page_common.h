@@ -47,4 +47,3 @@ typedef struct _MetaData {
 
 gint verbose;
 gboolean get_properties(GtkWidget * page, gchar * uri);
-

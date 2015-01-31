@@ -331,7 +331,7 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                     if (media != NULL) {
                         if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_UNKNOWN)
                             dontplaynext = TRUE;
-                        }
+                    }
                     g_idle_add(set_quit, idledata);
                     return DBUS_HANDLER_RESULT_HANDLED;
                 }
@@ -450,9 +450,9 @@ static DBusHandlerResult filter_func(DBusConnection * connection, DBusMessage * 
                     dbus_error_init(&error);
                     if (dbus_message_get_args(message, &error, DBUS_TYPE_STRING, &s, DBUS_TYPE_INVALID)) {
                         g_strlcpy(idledata->progress_text, s, sizeof(idledata->progress_text));
-                    if (media != NULL) {
-                        if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_PLAY)
-                            g_idle_add(set_progress_text, idledata);
+                        if (media != NULL) {
+                            if (gmtk_media_player_get_media_state(GMTK_MEDIA_PLAYER(media)) != MEDIA_STATE_PLAY)
+                                g_idle_add(set_progress_text, idledata);
                         }
                     } else {
                         dbus_error_free(&error);

@@ -427,4 +427,3 @@ gboolean get_properties(GtkWidget * page, gchar * uri)
     }
     return FALSE;
 }
-

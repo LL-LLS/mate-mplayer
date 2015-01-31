@@ -38,6 +38,8 @@
 #define ENABLE_CAJA_PLUGIN "enable-caja-plugin"
 #define VERBOSE					"verbose"
 
+gint verbose;
+
 static GType pp_type = 0;
 
 static GList *mate_mplayer_properties_get_pages(CajaPropertyPageProvider * provider, GList * files)
@@ -104,8 +106,7 @@ static void mate_mplayer_properties_plugin_register_type(GTypeModule * module)
     };
 
     pp_type = g_type_module_register_type(module, G_TYPE_OBJECT, "MateMPlayerPropertiesPlugin", &info, 0);
-    g_type_module_add_interface(module,
-                                pp_type, CAJA_TYPE_PROPERTY_PAGE_PROVIDER, &property_page_provider_iface_info);
+    g_type_module_add_interface(module, pp_type, CAJA_TYPE_PROPERTY_PAGE_PROVIDER, &property_page_provider_iface_info);
 }
 
 
