@@ -325,13 +325,11 @@ BACKEND=`pkg-config --variable=preference_backend gmlib`
 if test ${BACKEND} = "gsettings"; then
     AC_MSG_NOTICE([gmlib is using ${BACKEND} for preference storage])
     GLIB_GSETTINGS
-    AM_CONDITIONAL([MATECONF_SCHEMAS_INSTALL],[false])
     USE_GSETTINGS=1
     AC_SUBST(USE_GSETTINGS)
 elif test ${BACKEND} = "keystore"; then
     GSETTINGS_RULES=""
     AC_SUBST(GSETTINGS_RULES)
-    AM_CONDITIONAL([MATECONF_SCHEMAS_INSTALL],[false])
 fi
 
 AC_CHECK_HEADERS([mntent.h])
@@ -350,5 +348,4 @@ icons/48x48/Makefile
 icons/scalable/Makefile
 src/Makefile
 po/Makefile.in
-mate-mplayer.schemas
 ])

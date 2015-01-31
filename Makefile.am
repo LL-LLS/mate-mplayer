@@ -15,11 +15,6 @@ mate_mplayerdoc_DATA = \
 	DOCS/tech/dbus.txt \
 	DOCS/tech/plugin-interaction.txt
 
-if MATECONF_SCHEMAS_INSTALL
-schemadir   = @MATECONF_SCHEMA_FILE_DIR@
-schema_DATA = mate-mplayer.schemas
-endif
-
 desktopdir = ${prefix}/share/applications
 desktop_DATA = mate-mplayer.desktop
 
@@ -34,7 +29,6 @@ EXTRA_DIST = \
 	autogen.sh \
 	$(mate_mplayerdoc_DATA) \
 	$(desktop_DATA) \
-	$(schema_DATA) \
 	$(manpage_DATA) \
 	$(prefapp_DATA) \
 	$(gsettings_SCHEMAS) \
@@ -55,14 +49,7 @@ update-icon-cache:
 		$(gtk_update_icon_cache); \
 	fi
 
-install-schemas: $(schema_DATA)
-	MATECONF_CONFIG_SOURCE=$(MATECONF_SCHEMA_CONFIG_SOURCE) mateconftool-2 --makefile-install-rule $(schema_DATA) 2>&1 > /dev/null
-
-if MATECONF_SCHEMAS_INSTALL
-install-data-hook: install-schemas update-icon-cache
-else
 install-data-hook: update-icon-cache
-endif
 
 gsettings_ENUM_NAMESPACE = org.mate.mate-mplayer.preferences
 gsettings_ENUM_FILES = $(top_srcdir)/src/*.h

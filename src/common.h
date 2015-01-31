@@ -123,7 +123,7 @@
 
 #define ACCELERATOR_KEYS	"accelerator-keys"
 
-// set this to true in mateconf/dconf when using with mate global menus
+// set this to true in dconf when using with mate global menus
 #define ENABLE_GLOBAL_MENU  "enable-global-menu"
 
 #define ENABLE_CAJA_PLUGIN "enable-caja-plugin"

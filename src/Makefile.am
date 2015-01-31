@@ -13,7 +13,6 @@ AM_CPPFLAGS = \
 	$(GMTK_CFLAGS) \
     $(GIO_CFLAGS) \
 	$(DBUS_CFLAGS) \
-	$(MATECONF_CFLAGS) \
 	$(ALSA_CFLAGS) \
 	$(PULSE_CFLAGS) \
     $(NOTIFY_CFLAGS) \
@@ -29,7 +28,6 @@ AM_CFLAGS =\
 	 $(GLIB2_14_DEFINES) \
      $(GIO_DEFINES) \
 	 $(ALSA_DEFINES) \
-     $(MATECONF_DEFINES) \
      $(NOTIFY_DEFINES) \
      $(GPOD_DEFINES) \
      $(MUSICBRAINZ_DEFINES) \
@@ -79,7 +77,6 @@ mate_mplayer_LDADD = \
     $(GMTK_LIBS) \
     $(GIO_LIBS) \
     $(DBUS_LIBS) \
-    $(MATECONF_LIBS) \
     $(ALSA_LIBS) \
 	$(PULSE_LIBS) \
     $(NOTIFY_LIBS) \
