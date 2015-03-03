@@ -3,23 +3,8 @@ mate-mplayer
 
 Fork of gnome-mplayer
 
-Installation:
+This package has reached EOL !
 
-./autogen.sh
+Gnome-mplayer support now mate and provide a caja extension with latest upstream commits.
 
-make
-
-make install
-
-
-Dependencies:
-
-Build Dependencies:
-
-alsa-lib-devel, dbus-glib-devel, desktop-file-utils, gettext, gmtk-devel, gtk3-devel,
-libcurl-devel, libgpod-devel, libmusicbrainz3-devel, libnotify-devel, libXScrnSaver-devel, caja-devel,
-pulseaudio-libs-devel, mate-common, mate-conf-devel
-
-Install Dependencies:
-
-mate-control-center-filesystem, gvfs-fuse, mencoder, mplayer
+Asked you disto maintainer to include those commits.
